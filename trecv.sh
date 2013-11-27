@@ -1,0 +1,1 @@
+printf "read file;hexfile=\${file}.hex;stty -echo;cat > \${hexfile};stty echo;cat \${hexfile} | perl -ne 's/([0-9a-f]{2})/print chr hex \$1/gie' > \${file};rm -f \${hexfile}" > .__trecv.sh;bash .__trecv.sh;rm -f .__trecv.sh

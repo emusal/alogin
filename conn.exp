@@ -1,0 +1,486 @@
+#!/usr/bin/expect 
+
+#
+# DEFINE GLOBAL VARIABLES
+#
+set log_on			0
+set timeout			20
+
+# Last character of prompt: ],[,$,{,},\,#,>
+set prompt			{[][${}\\#>]+[ ]{0,}$} 
+#set prompt			"(%|#|]|>|\\$)+"
+#set prompt			"\]($| $)"
+#set prompt			"(#)+"
+
+if [ info exists env(EXPECT_PROMPT) ] {
+	set prompt $env(EXPECT_PROMPT)
+}
+set sshopt			""
+if [ info exists env(ALOGIN_SSHOPT) ] {
+	set sshopt $env(ALOGIN_SSHOPT)
+}
+set tunnopt			""
+
+set ecode			{ SUCCESS, EERROR, ETIMEOUT }
+set is_first 		1
+set is_first_get	1
+set start_idx		0
+
+# num of retry to connect when "closed by remote host"
+set reconn_interval		5
+
+# propagate window size changes to child...
+trap {
+    set rows [stty rows]
+    set cols [stty columns]
+    if {[info exists spawn_out(slave,name)]} {
+        stty rows $rows columns $cols < $spawn_out(slave,name)
+    } 
+} WINCH
+
+#
+# DEFINE FUNCTIONS
+#
+
+proc getopt {_argv name {_var ""} {default ""}} {
+	upvar 1 $_argv argv $_var var
+	set pos [lsearch -regexp $argv ^$name]
+	if {$pos>=0} {
+		set to $pos
+		if {$_var ne ""} {
+			set var [lindex $argv [incr to]]
+		}
+		set argv [lreplace $argv $pos $to]
+		return 1
+	} else {
+		if {[llength [info level 0]] == 5} {set var $default}
+		return 0
+	}
+}
+
+proc get_default_port { proto } {
+	if { $proto == "telnet" } 	{ return 23 }
+	if { $proto == "ssh" } 		{ return 22 }
+	if { $proto == "rlogin" } 	{ return 513 }
+	if { $proto == "ftp" } 		{ return 21 }
+	if { $proto == "sftp" } 	{ return 22 }
+	if { $proto == "sshfs" } 	{ return 22 }
+}
+
+proc connect { proto host user passwd port } {
+	global prompt is_first spawn_id spawn_out sshopt tunnopt ssh 
+	global reconn_interval
+	set CTRLC	\003
+
+	switch -regexp $proto {
+	(ssh|sftp|sshfs) {
+		if { $is_first == 1 } { 
+			if { $proto == "ssh" } { 
+				log_debug [ format "spawn -noecho ssh $user@$host -p $port $sshopt $tunnopt" ]
+				eval spawn -noecho ssh $user@$host -p $port $sshopt $tunnopt
+			} elseif { $proto == "sftp" } { 
+				eval spawn -noecho $proto -oPort=$port $user@$host
+			} else {
+				file mkdir "/Volumes/$user@$host"
+				eval spawn -noecho -ignore HUP /usr/local/bin/sshfs $user@$host:. /Volumes/$user@$host -oauto_cache,reconnect,volname=$user@$host,workaround=all,port=$port
+			}
+		} else { 
+			expect -re $prompt {
+				if { $proto == "ssh" } {
+					send "$proto $user@$host -p $port $sshopt $tunnopt\r"
+				} else {
+					send "$proto -oPort=$port $user@$host\r"
+				}
+			}
+		}
+	}
+	"telnet" {
+		if { $is_first == 1 } { 
+#			spawn -noecho $proto -E -8 -l $user $host $port
+			eval spawn -noecho $proto -K -E -L $host -$port
+		} else { 
+			expect {
+				-re $prompt { send "$proto -K -e \"\" -E $host $port\r" }
+			}
+		}
+		wait 1
+	}
+	"rlogin" {
+		if { $is_first == 1 } { 
+			eval spawn -noecho $proto $user@$host 
+		} else { 
+			expect -re $prompt {
+				send "$proto $user@$host\r"
+			}
+		}
+	}
+	default {
+		if { $is_first == 1 } { 
+			eval spawn -noecho $proto $host 
+		} else { 
+			expect {
+				-re $prompt { send "$proto $host\r" }
+			}
+		}
+	}
+	}
+
+	expect {
+		-re "Are you sure you want to continue connecting" { 
+			send "yes\r"
+			exp_continue 
+		}
+		-re "(y/n)" { 
+			send "y\r"
+			exp_continue 
+		}
+		-re "Last login:" {
+			log_debug "last login ..."
+			exp_continue 
+		}
+		-re "Last successful login" {
+			exp_continue 
+		}
+		-re "Last unsuccessful login" {
+			exp_continue 
+		}
+		-re "login: Password:" {
+			send "\r"
+			exp_continue 
+		}
+		-re {\nlogin:} { 
+			log_debug "login !!!"
+			send "$user\r"
+			exp_continue
+		} 
+		-re "login:" { 
+			log_debug "login !!!"
+			send "$user\r"
+			exp_continue
+		} 
+		# Cisco ITP
+		-re "Username" {
+			send "$user\r"
+			exp_continue
+		}
+		# for FTP
+		# expect does not support "^" and "$" keyword for regexp. 
+		# because expect is not line oriendted.
+		-re {\nName \(} {
+			send "$user\r"
+			exp_continue
+		}
+		-re {[Pp]assword:} { 
+			log_debug [ format "password (%s)!!!" $passwd ]
+			send "$passwd\r"
+			exp_continue
+		} 
+		-re "¾Ïȣ:" {
+			send "$passwd\r"
+			exp_continue
+		}
+		-re "��ȣ" {
+			send "$passwd\r"
+			exp_continue
+		}
+
+		-re "incorrect"		 			{ exp_continue } 
+		-re "Permission denied"			{ return -1 }
+#		-re "No address|usage|route" 	{ return -2 } 
+		-re "No address" 				{ return -3 } 
+		-re "No usage" 					{ return -4 } 
+		-re "No route" 					{ return -5 } 
+		-re "Connection refused" 		{ return -6 } 
+		-re "Connection closed by remote host" {
+			# maybe heavy server load
+			if { $is_first == 1 } { close $spawn_id }
+			log_info [ format "retry to connect to %s after %d sec." \
+				$host $reconn_interval ]
+			sleep $reconn_interval
+			return [ connect $proto $host $user $passwd $port ]
+		} 
+		-re "Unable to connect" 		{ return -8 } 
+		-re "Host is down" 				{ return -9 } 
+		-re "unreachable" 				{ return -10 } 
+		-re "Privileged ports"			{ return -11 }
+
+		-re $prompt { 
+			log_debug "prompt !!!"
+			send "\r"
+			return 0
+		}
+
+		timeout 						{ 
+			log_debug "timeout !!!"
+			send $CTRLC
+			return -99 
+		}
+	}
+
+	return 0
+}	
+
+proc putfile { proto file } {
+	global prompt spawn_id start_idx argc is_first
+
+	if { $proto == "ftp" } {
+		expect -re $prompt { send "bin\r" }
+		expect -re $prompt { send "prompt\r" }
+	} else {
+		expect -re $prompt { send "progress\r" }
+	}
+
+	expect -re $prompt { send "mput $file\r" }
+	if { $is_first == 0 } {
+		expect -re $prompt { send "!rm $file\r" }
+	}
+	expect {
+		-re "yes/no" { 
+			send "yes\r"
+			exp_continue 
+		}
+		-re $prompt { send "quit\r" }
+	}
+}	
+
+proc getfile { proto file } {
+	global prompt spawn_id start_idx argc is_first_get
+
+	if { $proto == "ftp" } {
+		expect -re $prompt { send "bin\r" }
+		expect -re $prompt { send "prompt\r" }
+	} else {
+		expect -re $prompt { send "progress\r" }
+	}
+
+	expect -re $prompt { send "mget $file\r" }
+	if { $is_first_get == 0 } {
+		expect -re $prompt { send "rm $file\r" }
+	}
+	expect -re $prompt { send "quit\r" }
+}	
+
+proc wait { sec } {
+	set timeout $sec
+	expect {
+		timeout { 
+			log_debug [ format "%d sec timed out" $sec ]
+		}
+	}
+}
+
+proc log_info { str } {
+	puts [ format "<ALOGIN_MSG:INF> $str" ]
+}
+proc log_debug { str } {
+	global log_on
+	if { $log_on != 0 } { puts [ format "<ALOGIN_MSG:DBG> $str" ] }
+}
+proc log_buffer { str } {
+	global log_on 
+	if { $log_on != 0 } { puts [ format "\nSTART >>>>>>>>>>>\n $str \nEND >>>>>>>>>>>\n" ] }
+}
+
+proc main { argc argv } {
+
+	global spawn_id 
+	global prompt
+	global is_first
+	global is_first_get
+	global start_idx
+	global sshopt
+	global tunnopt
+
+	log_debug [ format "argc=%d argv=%s" $argc $argv ]
+
+	set rc [ getopt argv -c command "" ]
+	if { $rc == 1 } { set argc [expr $argc-2] }
+
+	set rc [ getopt argv -p put_filename "" ]
+	if { $rc == 1 } { set argc [expr $argc-2] }
+
+	set rc [ getopt argv -g get_filename "" ]
+	if { $rc == 1 } { set argc [expr $argc-2] }
+
+	set rc [ getopt argv -t local_port "" ]
+	if { $rc == 1 } { set argc [expr $argc-2] }
+
+	set rc [ getopt argv -L local_port "" ]
+	if { $rc == 1 } { set argc [expr $argc-2] }
+
+	set rc [ getopt argv -R remote_port "" ]
+	if { $rc == 1 } { set argc [expr $argc-2] }
+
+	log_debug [ format "command     =%s" $command ]
+	log_debug [ format "put file    =%s" $put_filename ]
+	log_debug [ format "get file    =%s" $get_filename ]
+	log_debug [ format "-L port =%s" $local_port ]
+	log_debug [ format "-R port =%s" $remote_port ]
+	log_debug [ format "argc=%d argv=%s" $argc $argv ]
+
+	if { $argc < 4 } {
+		puts "no entry in server list"
+		exit 1
+	}
+	
+	set bind_addr "0:"
+
+	for { set i $start_idx } { $i < $argc } { } {
+		if { $i > $start_idx } { 
+			set is_first 0 
+			set bind_addr ""
+		} 
+	
+		set proto 	[lindex ${argv} ${i} ];incr i
+		set host 	[lindex ${argv} ${i} ];incr i
+		set user 	[lindex ${argv} ${i} ];incr i
+		set passwd 	[lindex ${argv} ${i} ];incr i
+		set port 	[lindex ${argv} ${i} ];incr i
+		if { $port == "-" } {
+			set port [get_default_port $proto]
+		}
+		# replacing <space>, <tab> keyword to actual character
+		set passwd	[ string map { <space> " " <tab> "	" } $passwd ]
+		# replacing comma to white space to use as array
+		set local_ports [ string map { "," " " } $local_port ]
+
+		if { $put_filename ne "" } {
+			if { $proto == "ssh" } { 
+				connect sftp $host $user $passwd $port 
+				putfile sftp $put_filename 
+			} else {
+				connect ftp $host $user $passwd $port 
+				putfile ftp $put_filename 
+			}
+		}
+		if { $local_port ne "" } {
+			set pidx 0
+			set pstr [lindex ${local_ports} 0]
+			set tunnopt ""
+			# is the last host?
+			if { $i < $argc } {
+				# NOT last host
+				while { $pstr ne "" } {
+					set tunnopt [ format "%s -L%s%s:0:%s" $tunnopt $bind_addr $pstr $pstr ]
+					incr pidx; set pstr [lindex ${local_ports} ${pidx}]
+				}
+			} else {
+				# last host
+				if { $remote_port ne "" } {
+					while { $pstr ne "" } {
+						if { $remote_port eq $local_port } {
+							set tunnopt [ format "%s -L%s%s:0:%s" $tunnopt $bind_addr $pstr $pstr ]
+						} else {
+							set tunnopt [ format "%s -L%s%s:0:%s" $tunnopt $bind_addr $pstr $remote_port ]
+						}
+						incr pidx; set pstr [lindex ${local_ports} ${pidx}]
+					}
+				} else {
+					while { $pstr ne "" } {
+						set tunnopt [ format "%s -L%s%s:0:%s" $tunnopt $bind_addr $pstr $port ]
+						incr pidx; set pstr [lindex ${local_ports} ${pidx}]
+					}
+				}
+			}
+			log_debug [ format "sshopt=%s tunnopt=%s. i=%d argc=%d" $sshopt $tunnopt $i $argc ]
+		}
+		set rc [ connect $proto $host $user $passwd $port ]
+		if { $rc != 0 } {
+			if { $rc == -99 } {	# timeout. reconnect
+				log_info [ format "connection timeout. retry to connect ..." ]
+				set i [expr $i - 5]
+			} else {
+				log_info [ format "connect failed by error(%d)" $rc ]
+				close $spawn_id
+				return $rc;
+			}
+		}
+	} 
+
+	if { $command ne "" || $get_filename ne "" } {
+
+		if { $command ne "" } {
+			expect { 
+				-re $prompt { 
+					wait 1
+					send "$command\r" 
+				} 
+			}
+		}
+
+		for { set i [expr $argc-1] } { $i > 0 } { set i [expr $i-1] } {
+			set port 	[lindex ${argv} ${i} ];set i [expr $i-1]
+			set passwd 	[lindex ${argv} ${i} ];set i [expr $i-1]
+			set user 	[lindex ${argv} ${i} ];set i [expr $i-1]
+			set host 	[lindex ${argv} ${i} ];set i [expr $i-1]
+			set proto 	[lindex ${argv} ${i} ]
+			if { $port == "-" } {
+				set port [get_default_port $proto]
+			}
+			# replacing <space>, <tab> keyword to actual character
+			set passwd	[ string map { <space> " " <tab> "	" } $passwd ]
+				
+			log_debug [ format "i=%d host=%s user=%s passwd=%s port=%s getfile=%s" \
+				$i $host $user $passwd $port $get_filename ]
+
+			set send_exit 1;
+
+			expect {
+				-re $prompt { 
+					if { $send_exit == 1 } {
+						wait 1
+						send "exit\r" 
+						set send_exit 0;
+						exp_continue;
+					} else {
+						send "\r"
+						if { $get_filename ne "" } {
+							if { $proto == "ssh" } { 
+								connect sftp $host $user $passwd $port 
+								getfile sftp $get_filename 
+							} else {
+								connect ftp $host $user $passwd $port 
+								getfile ftp $get_filename 
+							}
+							set is_first_get 0
+						}
+						set send_exit 1;
+						continue
+					}
+				}
+			}
+		}
+
+		log_debug [ format "host=%s user=%s passwd=%s port=%s getfile=%s" \
+			$host $user $passwd $port $get_filename ]
+
+		if { $get_filename ne "" } {
+			set is_first 1 
+			set spawn_id 0
+			if { $proto == "ssh" } { 
+				connect sftp $host $user $passwd $port 
+				getfile sftp $get_filename 
+			} else {
+				connect ftp $host $user $passwd $port 
+				getfile ftp $get_filename 
+			}
+		}
+
+	} else {
+		if { $proto == "sshfs" } {
+			sleep 1
+			while { 1 } {
+				if { [exec mount | grep -c $user@$host] > 0 } {
+					break
+				} 
+				sleep 1
+			}
+		} else {
+			log_debug "interact !!!"
+			interact	
+		}
+	}
+}
+
+main $argc $argv
+

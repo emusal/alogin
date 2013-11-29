@@ -845,12 +845,21 @@ function t()
 # mount remote volume
 function m()
 {
-	local ahost=$(get_alias_host ${1})
+	local a=(${1//:/ })
+	local ahost=$(get_alias_host ${a[0]})
+	local dest_path=${a[1]}
+
+	a=(${ahost//:/ })
+	ahost="${a[0]}"
+	if [ -z "${dest_path}" ] ; then 
+		dest_path=${a[1]}
+	fi
+
 	local host=$(get_host ${ahost})
 	local info=`get_svr_info ${ahost} | \
 		 awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
-	local ip=`IP ${host}`
-	info=${info/$host/$ip} # converting hostname
+#	local ip=`IP ${host}`
+#	info=${info/$host/$ip} # converting hostname
 
 	init_global
 
@@ -861,12 +870,11 @@ function m()
 		echo "  The pacakges, sshfs and osxfuse, are placed in ALOGIN_ROOT/pkgs"
 		return
 	fi
-	if [ $? -ne 0 ] ; then
-		sshfs $1
-	else
-		log_debug "$info"
-		${ALOGIN_ROOT}/conn.exp sshfs $info 
+	if [ -z "${dest_path}" ] ; then
+		dest_path="."
 	fi
+	log_debug "$info"
+	${ALOGIN_ROOT}/conn.exp sshfs $info -d "${dest_path}"
 }
 
 # Automatically connect to remote host after determining gateway

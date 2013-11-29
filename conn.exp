@@ -67,7 +67,7 @@ proc get_default_port { proto } {
 	if { $proto == "sshfs" } 	{ return 22 }
 }
 
-proc connect { proto host user passwd port } {
+proc connect { proto host user passwd port {dest_path "."} } {
 	global prompt is_first spawn_id spawn_out sshopt tunnopt ssh 
 	global reconn_interval
 	set CTRLC	\003
@@ -81,8 +81,13 @@ proc connect { proto host user passwd port } {
 			} elseif { $proto == "sftp" } { 
 				eval spawn -noecho $proto -oPort=$port $user@$host
 			} else {
-				file mkdir "/Volumes/$user@$host"
-				eval spawn -noecho -ignore HUP /usr/local/bin/sshfs $user@$host:. /Volumes/$user@$host -oauto_cache,reconnect,volname=$user@$host,workaround=all,port=$port
+				set vname "$user@$host"
+				if { [string equal "$dest_path" "."] == 0 } {
+					set vname "${vname}-${dest_path}"
+				}
+				set vname [regsub -all "\/" $vname ":"]
+				file mkdir "/Volumes/$vname"
+				eval spawn -noecho -ignore HUP /usr/local/bin/sshfs $user@$host:$dest_path /Volumes/$vname -oauto_cache,reconnect,volname=$vname,workaround=all,port=$port
 			}
 		} else { 
 			expect -re $prompt {
@@ -311,11 +316,15 @@ proc main { argc argv } {
 	set rc [ getopt argv -R remote_port "" ]
 	if { $rc == 1 } { set argc [expr $argc-2] }
 
+	set rc [ getopt argv -d dest_path "" ]
+	if { $rc == 1 } { set argc [expr $argc-2] }
+
 	log_debug [ format "command     =%s" $command ]
 	log_debug [ format "put file    =%s" $put_filename ]
 	log_debug [ format "get file    =%s" $get_filename ]
 	log_debug [ format "-L port =%s" $local_port ]
 	log_debug [ format "-R port =%s" $remote_port ]
+	log_debug [ format "-d dest_path =%s" $dest_path ]
 	log_debug [ format "argc=%d argv=%s" $argc $argv ]
 
 	if { $argc < 4 } {
@@ -384,7 +393,7 @@ proc main { argc argv } {
 			}
 			log_debug [ format "sshopt=%s tunnopt=%s. i=%d argc=%d" $sshopt $tunnopt $i $argc ]
 		}
-		set rc [ connect $proto $host $user $passwd $port ]
+		set rc [ connect $proto $host $user $passwd $port $dest_path ]
 		if { $rc != 0 } {
 			if { $rc == -99 } {	# timeout. reconnect
 				log_info [ format "connection timeout. retry to connect ..." ]

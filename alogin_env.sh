@@ -24,6 +24,9 @@ function init_env()
 			export ALOGIN_SPECIAL_TERM_THEME="cyan"
 		fi
 	fi
+	if [ -z "${ALOGIN_LANG}" ] ; then
+		ALOGIN_LANG="ko_KR.eucKR"
+	fi
 	
 	# FILE FORMAT
 	#
@@ -838,7 +841,7 @@ function t()
 	fi
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
-	${ALOGIN_ROOT}/conn.exp $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"
+	LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }
 
@@ -874,7 +877,7 @@ function m()
 		dest_path="."
 	fi
 	log_debug "$info"
-	${ALOGIN_ROOT}/conn.exp sshfs $info -d "${dest_path}"
+	LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp sshfs $info -d "${dest_path}"
 }
 
 # Automatically connect to remote host after determining gateway
@@ -921,7 +924,7 @@ function r()
 		set_theme "${ALOGIN_DEFAULT_TERM_THEME}"
 	fi
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
-	${ALOGIN_ROOT}/conn.exp ${info} -c "${g_c_opt}" -p "${g_p_opt}" -g "${g_g_opt}" -t "${g_t_opt}" -L "${g_L_opt}" -R "${g_R_opt}"
+	LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp ${info} -c "${g_c_opt}" -p "${g_p_opt}" -g "${g_g_opt}" -t "${g_t_opt}" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }
 
@@ -937,7 +940,7 @@ function f()
 	if [ $? -ne 0 ] ; then
 		ftp $host
 	else
-		${ALOGIN_ROOT}/conn.exp ftp $info 
+		LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp ftp $info 
 	fi
 }
 
@@ -955,7 +958,7 @@ function s()
 	if [ $? -ne 0 ] ; then
 		sftp $1
 	else
-		${ALOGIN_ROOT}/conn.exp sftp $info 
+		LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp sftp $info 
 	fi
 }
 

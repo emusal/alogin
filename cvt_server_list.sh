@@ -40,8 +40,8 @@ if [ ! -z ${ALOGIN_KEYCHAIN_USE} ] ; then
 	security create-keychain -p ${password} ${keychain_path}
 fi
 
-echo "#proto host                 user                 passwd               port  gateway" > ${new_server_list}
-echo "#----- -------------------- -------------------- -------------------- ----- -------" >> ${new_server_list}
+echo "#proto  host                 user                 passwd               port  gateway" > ${new_server_list}
+echo "#------ -------------------- -------------------- -------------------- ----- -------" >> ${new_server_list}
 
 if [ -f ${path} ] ; then
 	while read line ; do

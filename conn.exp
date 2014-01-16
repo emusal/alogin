@@ -1,4 +1,4 @@
-#!/usr/bin/expect 
+#!/usr/bin/expect -f
 
 #
 # DEFINE GLOBAL VARIABLES
@@ -65,6 +65,7 @@ proc get_default_port { proto } {
 	if { $proto == "ftp" } 		{ return 21 }
 	if { $proto == "sftp" } 	{ return 22 }
 	if { $proto == "sshfs" } 	{ return 22 }
+	if { $proto == "vagrant" } 	{ return 22 }
 }
 
 proc connect { proto host user passwd port {dest_path "."} } {
@@ -98,6 +99,16 @@ proc connect { proto host user passwd port {dest_path "."} } {
 				}
 			}
 		}
+	}
+	"vagrant" {
+		if { $is_first == 1 } { 
+			eval spawn -noecho vagrant ssh $host -- -l $user $tunnopt
+		} else { 
+			expect {
+				-re $prompt { send "vagrant ssh $host -- -l $user $tunnopt\r" }
+			}
+		}
+		wait 1
 	}
 	"telnet" {
 		if { $is_first == 1 } { 

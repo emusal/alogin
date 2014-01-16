@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.8"
+	ALOGIN_VERSION="1.7.9"
 	ALOGIN_LOG_LEVEL=0
 
 	# CONFIGURATION
@@ -13,6 +13,7 @@ function init_env()
 	ALOGIN_GATEWAY_LIST=${ALOGIN_ROOT}/gateway_list
 	ALOGIN_ALIAS_HOSTS=${ALOGIN_ROOT}/alias_hosts
 	ALOGIN_KEYCHAIN=${ALOGIN_ROOT}/alogin.keychain
+	ALOGIN_LOG_FILE=${ALOGIN_ROOT}/alogin.log
 	
 	if [ -z "${ALOGIN_HOST_FILE}" ] ; then
 		ALOGIN_HOST_FILE=/etc/hosts
@@ -27,16 +28,21 @@ function init_env()
 	if [ -z "${ALOGIN_LANG}" ] ; then
 		ALOGIN_LANG="ko_KR.eucKR"
 	fi
-	
+	if [ ! -e "${ALOGIN_LOG_FILE}" ] ; then
+		touch ${ALOGIN_LOG_FILE}
+	fi
+
 	# FILE FORMAT
 	#
-	SVR_FMT="%-6s %-20s %-20s %-20s %-5s %s"
-	SVR_FMT_BAR="------ -------------------- -------------------- -------------------- ----- --------------------"
+	SVR_FMT="%-7s %-20s %-20s %-20s %-5s %s"
+	SVR_FMT_BAR="------- -------------------- -------------------- -------------------- ----- --------------------"
 	
 	if [ ! -e ${ALOGIN_SERVER_LIST} ] ; then
 		printf "${SVR_FMT}\n" "#proto" "host" "user" "passwd" "port" "gateway" > ${ALOGIN_SERVER_LIST}
 		echo "#${SVR_FMT_BAR}" >> ${ALOGIN_SERVER_LIST}
 	fi
+
+	export MANPATH=$MANPATH:$ALOGIN_ROOT/man
 }
 
 # Global Variables
@@ -195,30 +201,39 @@ function tver()
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/conn.exp"
+	echo ""
+	echo "  Ver.1.7.9  'vagrant' support                            @ 2014/01/16" 
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        M   ${ALOGIN_ROOT}/conn.exp"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
 }
 
+function datestr()
+{
+	date +"%Y%m%d %H:%M:%S"
+}
 function log_debug()
 {
 	if [ $ALOGIN_LOG_LEVEL -ge 2 ] ; then
 		local fmt=$1;shift
-		printf "[DEBUG] $fmt\n"$*
+		printf "$(datestr) [DEBUG] $fmt\n"$* >> ${ALOGIN_LOG_FILE}
 	fi
 }
 function log_info()
 {
 	if [ $ALOGIN_LOG_LEVEL -ge 1 ] ; then
 		local fmt=$1;shift
-		printf "[INFO] $fmt\n"$*
+		printf "$(datestr) [INFO] $fmt\n"$* >> ${ALOGIN_LOG_FILE}
 	fi
 }
 function log_error()
 {
 	if [ $ALOGIN_LOG_LEVEL -ge 0 ] ; then
 		local fmt=$1;shift
-		printf "[ERROR] $fmt\n"$*
+		printf "$(datestr) [ERROR] $fmt\n"$* >> ${ALOGIN_LOG_FILE}
 	fi
 }
 
@@ -468,6 +483,18 @@ function get_svr_info()
 		'{ if ( $2 == h && ( u == "" || u == $3 ) ) { \
 		printf "%-5s\n", $5 ; exit }}' | head -1
 }
+function get_alias_host()
+{
+	local aliasname=$1
+	local host=$1
+
+	if [ -e ${ALOGIN_ALIAS_HOSTS} ] ; then
+		host=`grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | \
+			awk -v h="${aliasname}" '{ if ( $1 == h ) print $2}' | head -1`
+		if [ -z "${host}" ] ; then host=$1; fi
+	fi
+	echo ${host}
+}
 function get_gateway()
 {
 	local user=""
@@ -511,18 +538,6 @@ function get_gateway_list()
 	fi
 
 	echo ${hosts}" "${1}
-}
-function get_alias_host()
-{
-	local aliasname=$1
-	local host=$1
-
-	if [ -e ${ALOGIN_ALIAS_HOSTS} ] ; then
-		host=`grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | \
-			awk -v h="${aliasname}" '{ if ( $1 == h ) print $2}' | head -1`
-		if [ -z "${host}" ] ; then host=$1; fi
-	fi
-	echo ${host}
 }
 
 # Management Commands

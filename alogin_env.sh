@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.9"
+	ALOGIN_VERSION="1.7.10"
 	ALOGIN_LOG_LEVEL=0
 
 	# CONFIGURATION
@@ -206,6 +206,9 @@ function tver()
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/conn.exp"
+	echo "  Ver.1.7.10 auto-completion support                      @ 2014/02/05" 
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
@@ -708,6 +711,9 @@ function get_conninfo()
 	local hosts=$*
 	for host in $hosts ; do
 
+		local a=($(findsvr2 ${host}))
+		host=${a[0]}
+
 		host=`get_alias_host ${host}`
 		local info_=`get_svr_info ${host}`
 		if [ ${#info_} -eq 0 ] ; then
@@ -735,7 +741,7 @@ function is_special_host()
 	if [ -e ${ALOGIN_ROOT}/special_hosts ] ; then
 		local a=($g_hosts)
 		local dest=`get_host ${a[${#a[*]}-1]}`
-		for host in `cat ${ALOGIN_ROOT}/special_hosts | grep -v "^#"` ; do
+		for host in `cat ${ALOGIN_ROOT}/special_hosts | grep -v "^#" | awk '{ print $1 }'` ; do
 			if [[ $dest =~ $host ]] ; then
 				is_special=1
 				break
@@ -813,6 +819,21 @@ function disalias()
 	else echo $name; fi
 }
 
+function get_locale()
+{
+#	local host=$1
+#	local locale=""
+#	if [ -z "$host" ] ; then
+#		locale=${ALOGIN_LANG}
+#	else
+#		locale="ko_KR.UTF-8"
+#		locale="ko_KR.eucKR"
+#	fi
+#	log_debug "the locale of host[${host}] is $locale"
+#	echo "${locale}"
+	echo ${ALOGIN_LANG}
+}
+
 # telnet or ssh
 function t()
 {
@@ -856,7 +877,9 @@ function t()
 	fi
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
-	LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"
+	local a=($g_hosts)
+	local dest=`get_host ${a[${#a[*]}-1]}`
+	LC_ALL=$(get_locale ${dest}) ${ALOGIN_ROOT}/conn.exp $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }
 
@@ -892,7 +915,7 @@ function m()
 		dest_path="."
 	fi
 	log_debug "$info"
-	LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp sshfs $info -d "${dest_path}"
+	LC_ALL=$(get_locale ${host}) ${ALOGIN_ROOT}/conn.exp sshfs $info -d "${dest_path}"
 }
 
 # Automatically connect to remote host after determining gateway
@@ -939,15 +962,19 @@ function r()
 		set_theme "${ALOGIN_DEFAULT_TERM_THEME}"
 	fi
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
-	LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp ${info} -c "${g_c_opt}" -p "${g_p_opt}" -g "${g_g_opt}" -t "${g_t_opt}" -L "${g_L_opt}" -R "${g_R_opt}"
+
+	local a=($g_hosts)
+	local dest=`get_host ${a[${#a[*]}-1]}`
+	LC_ALL=$(get_locale ${dest}) ${ALOGIN_ROOT}/conn.exp ${info} -c "${g_c_opt}" -p "${g_p_opt}" -g "${g_g_opt}" -t "${g_t_opt}" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }
 
 # ftp
 function f()
 {
-	local host=`get_host ${1}`
-	local info=`get_svr_info ${1} | \
+	local ahost=$(get_alias_host ${1})
+	local host=`get_host ${ahost}`
+	local info=`get_svr_info ${ahost} | \
 		awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
 
 	init_global
@@ -955,15 +982,16 @@ function f()
 	if [ $? -ne 0 ] ; then
 		ftp $host
 	else
-		LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp ftp $info 
+		LC_ALL=$(get_locale ${host}) ${ALOGIN_ROOT}/conn.exp ftp $info 
 	fi
 }
 
 # secure ftp
 function s()
 {
-	local host=`get_host ${1}`
-	local info=`get_svr_info ${1} | \
+	local ahost=$(get_alias_host ${1})
+	local host=`get_host ${ahost}`
+	local info=`get_svr_info ${ahost} | \
 		 awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
 	local ip=`IP ${host}`
 	info=${info/$host/$ip} # converting hostname
@@ -971,12 +999,17 @@ function s()
 	init_global
 
 	if [ $? -ne 0 ] ; then
-		sftp $1
+		sftp $host
 	else
-		LC_ALL=${ALOGIN_LANG} ${ALOGIN_ROOT}/conn.exp sftp $info 
+		LC_ALL=$(get_locale ${host}) ${ALOGIN_ROOT}/conn.exp sftp $info 
 	fi
 }
-
+function translate_cname()
+{
+	local a=($(findcluster $1))
+	log_debug "translate_cname($1) = ${a[@]}"
+	echo ${a[0]}
+}
 function cluster_conn()
 {
 	local cmd=$1;shift 1
@@ -996,8 +1029,9 @@ function cluster_conn()
 			args=${args}"--tile_x=${g_x_opt} "
 			is_next_skip=1
 		else
+			local an=$(translate_cname $n)
 			if [ $is_next_skip -ne 1 ] ; then
-				g_hosts=${g_hosts}" "${n}
+				g_hosts=${g_hosts}" "${an}
 			fi
 			is_next_skip=0
 		fi
@@ -1115,6 +1149,99 @@ function findsvr()
 		fi
 	fi
 }
+function findalias()
+{
+	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" '{ if ( $1 ~ i ) { printf $1" " }}'
+}
+function findsvr2()
+{
+	local user=`get_user_n ${1}`
+	local host=`get_host_n ${1}`
+	local users=""
+
+	init_global
+
+	findalias $1
+
+	if [ -z "$user" ] ; then
+		grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
+			'{ if ( $2 ~ i || $3 ~ i ) { printf $3"@"$2" " }}'
+	else
+		if [ -z "$host" ] ; then
+			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v svrfmt="${SVR_FMT}\n" \
+				'{ if ( $3 == u ) { printf $3"@"$2" " }}'
+		else
+			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v h="${host}" -v svrfmt="${SVR_FMT}\n" \
+				'{ if ( $3 == u && $2 ~ h ) { printf $3"@"$2" " }}'
+		fi
+	fi
+}
+function findsvr_simple()
+{
+	local user=`get_user_n ${1}`
+	local host=`get_host_n ${1}`
+	local users=""
+
+	init_global
+
+	tput setaf 1
+	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
+		'{ if ( $1 ~ i ) { print "   @"$1" --> "$2 }}'
+	tput sgr0
+
+	echo ""
+	if [ -z "$user" ] ; then
+		grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
+			'{ if ( $2 ~ i || $3 ~ i ) { \
+			print "   "$3"@"$2 }}'
+	else
+		if [ -z "$host" ] ; then
+			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v svrfmt="${SVR_FMT}\n" \
+				'{ if ( $3 == u ) { \
+				print "   "$3"@"$2 }}'
+		else
+			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v h="${host}" -v svrfmt="${SVR_FMT}\n" \
+				'{ if ( $3 == u && $2 ~ h ) { \
+				print "   "$3"@"$2 }}'
+		fi
+	fi
+}
+function findcluster()
+{
+	local cnames=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${1}" '{ if ( $1 ~ n ) { print $1 }}'))
+	if [ ${#cnames[@]} -ne 0 ] ; then
+		for cname in ${cnames[@]} ; do
+			echo $cname
+		done
+	fi
+	findsvr2 $1
+}
+function findcluster_simple()
+{
+	local cnames=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${1}" '{ if ( $1 ~ n ) { print $1 }}'))
+
+	tput setaf 2
+	if [ ${#cnames[@]} -ne 0 ] ; then
+		echo ""
+		for cname in ${cnames[@]} ; do
+			local i=1
+			local a=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${cname}" '{ if ( $1 ~ n ) { print }}'))
+			if [ ${#a[@]} -ne 0 ] ; then
+# 				show cluster name only
+#				echo "   ${a[0]}"
+# 				show member hosts
+				echo -n "   ${a[0]} = { "
+				while [ $i -lt ${#a[@]} ] ; do
+					echo -n "${a[$i]} "
+					let i=$i+1
+				done
+				echo "}"
+			fi
+		done
+	fi
+	tput sgr0
+	findsvr_simple $1
+}
 function findhost()
 {
 	local ip=${1}
@@ -1125,7 +1252,7 @@ function findhost()
 	grep -v "^#" ${ALOGIN_HOST_FILE} | awk -v i="${1}" -v fmt="${fmt}\n" \
 		'{ if ( $1 ~ i || $2 ~ i ) { printf fmt, $1, $2 }}'
 }
-function xfindsvr2()
+function xfindsvr_simple()
 {
 	local user=`get_user_n ${1}`
 	local host=`get_host_n ${1}`
@@ -1234,8 +1361,41 @@ function chgpwd()
 	done < ${backup}
 }
 
+function _alogin_complete_()
+{
+    local cmd="${1##*/}"
+    local word=${COMP_WORDS[COMP_CWORD]}
+    local line=${COMP_LINE}
+    local xpat
+
+	if [ -z "$word" ] ; then
+		echo "";thelp $cmd
+		return
+	fi
+
+    # Check to see what command is being executed.
+    case "$cmd" in
+	[trsfm])
+		findsvr_simple $word
+		echo -n ">> "$line
+        ;;
+    c[tr])
+		findcluster_simple $word
+		echo -n ">> "$line
+        ;;
+    *)
+		findsvr_simple $word
+		echo -n $line
+        ;;
+    esac
+
+#    COMPREPLY=($(compgen -f -X "$xpat" -- "${word}"))
+}
+
 init_env $*
 if [ $# -ne 0 ] ; then 
 	cmd=$1;shift;
 	${cmd} $*
+else
+	complete -F _alogin_complete_ t r ct cr s f m > /dev/null
 fi

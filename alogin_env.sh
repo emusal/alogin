@@ -1189,7 +1189,6 @@ function findsvr_simple()
 		'{ if ( $1 ~ i ) { print "   @"$1" --> "$2 }}'
 	tput sgr0
 
-	echo ""
 	if [ -z "$user" ] ; then
 		grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
 			'{ if ( $2 ~ i || $3 ~ i ) { \
@@ -1220,9 +1219,8 @@ function findcluster_simple()
 {
 	local cnames=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${1}" '{ if ( $1 ~ n ) { print $1 }}'))
 
-	tput setaf 2
+	tput setaf 6
 	if [ ${#cnames[@]} -ne 0 ] ; then
-		echo ""
 		for cname in ${cnames[@]} ; do
 			local i=1
 			local a=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${cname}" '{ if ( $1 ~ n ) { print }}'))
@@ -1368,34 +1366,42 @@ function _alogin_complete_()
     local line=${COMP_LINE}
     local xpat
 
+	echo ""
 	if [ -z "$word" ] ; then
-		echo "";thelp $cmd
+		thelp $cmd
+		echo -n ">> "$line
 		return
+	else
+	    # Check to see what command is being executed.
+	    case "$cmd" in
+		[trsfm])
+			findsvr_simple $word
+			COMPREPLY=($(compgen -- $word ));;
+	    c[tr])
+			findcluster_simple $word
+	        ;;
+	    *)
+			findsvr_simple $word
+	        ;;
+	    esac
 	fi
 
-    # Check to see what command is being executed.
-    case "$cmd" in
-	[trsfm])
-		findsvr_simple $word
-		echo -n ">> "$line
-        ;;
-    c[tr])
-		findcluster_simple $word
-		echo -n ">> "$line
-        ;;
-    *)
-		findsvr_simple $word
-		echo -n $line
-        ;;
-    esac
-
 #    COMPREPLY=($(compgen -f -X "$xpat" -- "${word}"))
+	prompt_command
+	return 0
 }
+
+function prompt_command 
+{
+	echo -e ""
+	echo -n ">> "$COMP_LINE
+}
+#export PROMPT_COMMAND=prompt_command
 
 init_env $*
 if [ $# -ne 0 ] ; then 
 	cmd=$1;shift;
 	${cmd} $*
 else
-	complete -F _alogin_complete_ t r ct cr s f m > /dev/null
+	complete -F _alogin_complete_ t r ct cr s f m 
 fi

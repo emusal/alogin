@@ -512,7 +512,7 @@ function get_gateway()
 }
 function get_gateway_list()
 {
-	local host=$1
+	local host=$(translate_host $1)
 	local gw=`get_gateway ${host}`
 	local hosts=""
 
@@ -636,7 +636,7 @@ function dissvrlist()
 }
 function dissrt()
 {
-	local hosts=$1
+	local hosts=$(translate_host $1)
 	local gw=$hosts
 
 	init_global
@@ -705,15 +705,25 @@ function disdupsvr()
 {
 	grep -v "^#"  ${ALOGIN_ROOT}/server_list | awk '{ printf "%s@%s\n", $3, $2 }' | sort | uniq -d
 }
-
+function translate_host()
+{
+	local host=""
+	local a=($(findalias ${1}))
+	if [ ${#a[@]} -eq 0 ] ; then 
+		log_debug "alias name not found for host[$1]. try to find host from server_list ..."
+		a=($(findsvr ${1}))
+	fi
+	host="${a[0]}"
+	host=`get_alias_host ${host}`
+	log_debug "host[$1] is translated to ${host}"
+	echo ${host}
+}
 function get_conninfo()
 {
 	local hosts=$*
 	for host in $hosts ; do
 
-		local a=($(findsvr2 ${host}))
-		host=${a[0]}
-
+		host=`translate_host ${host}`
 		host=`get_alias_host ${host}`
 		local info_=`get_svr_info ${host}`
 		if [ ${#info_} -eq 0 ] ; then
@@ -1122,7 +1132,7 @@ function TRECV()
 	cat ${ALOGIN_ROOT}/trecv.sh | pbcopy
 }
 
-function findsvr()
+function ffindsvr()
 {
 	local user=`get_user_n ${1}`
 	local host=`get_host_n ${1}`
@@ -1151,73 +1161,47 @@ function findsvr()
 }
 function findalias()
 {
-	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" '{ if ( $1 ~ i ) { printf $1" " }}'
+	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" '{ if ( $1 ~ i ) { printf "%s ", $1 }}'
 }
-function findsvr2()
+function findsvr()
 {
 	local user=`get_user_n ${1}`
 	local host=`get_host_n ${1}`
+	local lineend="$2"
 	local users=""
 
 	init_global
 
-	findalias $1
-
 	if [ -z "$user" ] ; then
-		grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
-			'{ if ( $2 ~ i || $3 ~ i ) { printf $3"@"$2" " }}'
+		grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v i="${1}" \
+			'{ if ( $2 ~ i || $3 ~ i ) { printf "%s@%s ", $3, $2 }}'
 	else
 		if [ -z "$host" ] ; then
-			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v svrfmt="${SVR_FMT}\n" \
-				'{ if ( $3 == u ) { printf $3"@"$2" " }}'
+			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" \
+				'{ if ( $3 == u ) { printf "%s@%s ", $3, $2 }}'
 		else
-			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v h="${host}" -v svrfmt="${SVR_FMT}\n" \
-				'{ if ( $3 == u && $2 ~ h ) { printf $3"@"$2" " }}'
+			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v h="${host}" \
+				'{ if ( $3 == u && $2 ~ h ) { printf "%s@%s ", $3, $2 }}'
 		fi
 	fi
 }
-function findsvr_simple()
+function display_alias()
 {
-	local user=`get_user_n ${1}`
-	local host=`get_host_n ${1}`
-	local users=""
-
 	init_global
-
 	tput setaf 1
-	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
-		'{ if ( $1 ~ i ) { print "   @"$1" --> "$2 }}'
+	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" '{ if ( $1 ~ i ) { printf "@%s --> %s\n", $1, $2 }}' | sed 's/^/   /g'
 	tput sgr0
-
-	if [ -z "$user" ] ; then
-		grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
-			'{ if ( $2 ~ i || $3 ~ i ) { \
-			print "   "$3"@"$2 }}'
-	else
-		if [ -z "$host" ] ; then
-			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v svrfmt="${SVR_FMT}\n" \
-				'{ if ( $3 == u ) { \
-				print "   "$3"@"$2 }}'
-		else
-			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v h="${host}" -v svrfmt="${SVR_FMT}\n" \
-				'{ if ( $3 == u && $2 ~ h ) { \
-				print "   "$3"@"$2 }}'
-		fi
-	fi
 }
-function findcluster()
+function display_server()
 {
-	local cnames=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${1}" '{ if ( $1 ~ n ) { print $1 }}'))
-	if [ ${#cnames[@]} -ne 0 ] ; then
-		for cname in ${cnames[@]} ; do
-			echo $cname
-		done
-	fi
-	findsvr2 $1
+	init_global
+	tput setaf 2
+	(findsvr $1 | sed 's/\ /\\\\n/g' | xargs printf) | sed 's/^/   /g'
+	tput sgr0
 }
-function findcluster_simple()
+function display_cluster()
 {
-	local cnames=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${1}" '{ if ( $1 ~ n ) { print $1 }}'))
+	local cnames=$(findcluster $1)
 
 	tput setaf 6
 	if [ ${#cnames[@]} -ne 0 ] ; then
@@ -1238,9 +1222,18 @@ function findcluster_simple()
 		done
 	fi
 	tput sgr0
-	findsvr_simple $1
 }
-function findhost()
+function findcluster()
+{
+	grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${1}" '{ if ( $1 ~ n ) { printf "%s ", $1 }}'
+#	local cnames=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${1}" '{ if ( $1 ~ n ) { print $1 }}'))
+#	if [ ${#cnames[@]} -ne 0 ] ; then
+#		for cname in ${cnames[@]} ; do
+#			echo $cname
+#		done
+#	fi
+}
+function ffindhost()
 {
 	local ip=${1}
 	local fmt="%s %s"
@@ -1250,7 +1243,7 @@ function findhost()
 	grep -v "^#" ${ALOGIN_HOST_FILE} | awk -v i="${1}" -v fmt="${fmt}\n" \
 		'{ if ( $1 ~ i || $2 ~ i ) { printf fmt, $1, $2 }}'
 }
-function xfindsvr_simple()
+function xfindsvr_s()
 {
 	local user=`get_user_n ${1}`
 	local host=`get_host_n ${1}`
@@ -1258,7 +1251,7 @@ function xfindsvr_simple()
 
 	init_global
 
-	findsvr ${1} | tail +3 | awk -v c="${ALOGIN_ARG1}" -v xmlfmt="${xmlfmt}\n" \
+	ffindsvr ${1} | tail +3 | awk -v c="${ALOGIN_ARG1}" -v xmlfmt="${xmlfmt}\n" \
 				'BEGIN {print "<items>\n"} \
 				{printf xmlfmt, $3, $2, c, $3, $2, $3, $2 } \
 				END {print "</items>\n"}'
@@ -1280,7 +1273,7 @@ function xfindsvr()
 		cp /dev/null ${result}
 		if [ $i -gt 0 ] ; then
 			tmplist=".__server_list.${RANDOM}"
-			(ALOGIN_SERVER_LIST=$svrlist;findsvr ${arg} > $tmplist;rm $svrlist)
+			(ALOGIN_SERVER_LIST=$svrlist;ffindsvr ${arg} > $tmplist;rm $svrlist)
 			cat $tmplist | tail +3 | awk -v c="${ALOGIN_ARG1}" -v xmlfmt="${xmlfmt}\n" \
 				'BEGIN {print "<items>\n"} \
 				{printf xmlfmt, $3, $2, c, $3, $2, $3, $2 } \
@@ -1288,7 +1281,7 @@ function xfindsvr()
 			svrlist=$tmplist
 		else
 			svrlist=".__server_list.${RANDOM}"
-			findsvr ${arg} > $svrlist
+			ffindsvr ${arg} > $svrlist
 			cat $svrlist | tail +3 | awk -v c="${ALOGIN_ARG1}" -v xmlfmt="${xmlfmt}\n" \
 				'BEGIN {print "<items>\n"} \
 				{printf xmlfmt, $3, $2, c, $3, $2, $3, $2 } \
@@ -1321,10 +1314,10 @@ function xfindhost()
 	init_global
 
 	echo "<items>"
-	findhost ${ip} | awk -v xmlfmt="${xmlfmt}\n" '{printf xmlfmt, $1, $2, $2, $2, $1 '}
+	ffindhost ${ip} | awk -v xmlfmt="${xmlfmt}\n" '{printf xmlfmt, $1, $2, $2, $2, $1 '}
 	echo "</items>"
 
-#	findhost ${ip} | awk -v xmlfmt="${xmlfmt}\n" \
+#	ffindhost ${ip} | awk -v xmlfmt="${xmlfmt}\n" \
 #				'BEGIN {print "<items>\n"} \
 #				{printf xmlfmt, $1, $2, $2, $1, $2 } \
 #				END {print "</items>\n"}'
@@ -1375,13 +1368,19 @@ function _alogin_complete_()
 	    # Check to see what command is being executed.
 	    case "$cmd" in
 		[trsfm])
-			findsvr_simple $word
-			COMPREPLY=($(compgen -- $word ));;
+			display_alias "$word" 
+			display_server "$word"
+			;;
+		dissrt)
+			display_alias "$word" 
+			display_server "$word"
+			;;
 	    c[tr])
-			findcluster_simple $word
+			display_cluster "$word"
+			display_alias "$word" 
+			display_server "$word"
 	        ;;
 	    *)
-			findsvr_simple $word
 	        ;;
 	    esac
 	fi
@@ -1403,5 +1402,5 @@ if [ $# -ne 0 ] ; then
 	cmd=$1;shift;
 	${cmd} $*
 else
-	complete -F _alogin_complete_ t r ct cr s f m 
+	complete -F _alogin_complete_ t r ct cr s f m dissrt
 fi

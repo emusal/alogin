@@ -5,7 +5,6 @@
 function init_env()
 {
 	ALOGIN_VERSION="1.7.10"
-	ALOGIN_LOG_LEVEL=3
 
 	# CONFIGURATION
 	#
@@ -17,6 +16,9 @@ function init_env()
 	ALOGIN_KEYCHAIN=${ALOGIN_ROOT}/alogin.keychain
 	ALOGIN_LOG_FILE=${ALOGIN_ROOT}/alogin.log
 	
+	if [ -z "${ALOGIN_LOG_LEVEL}" ] ; then
+		ALOGIN_LOG_LEVEL=0
+	fi
 	if [ -z "${ALOGIN_HOST_FILE}" ] ; then
 		ALOGIN_HOST_FILE=/etc/hosts
 	fi

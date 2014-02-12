@@ -5,7 +5,7 @@
 function init_env()
 {
 	ALOGIN_VERSION="1.7.10"
-	ALOGIN_LOG_LEVEL=0
+	ALOGIN_LOG_LEVEL=3
 
 	# CONFIGURATION
 	#
@@ -1212,22 +1212,24 @@ function findsvr()
 function display_alias()
 {
 	init_global
-	tput setaf 1
+	#tput setaf 1
 	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" '{ if ( $1 ~ i ) { printf "@%s --> %s\n", $1, $2 }}' | sed 's/^/   /g'
-	tput sgr0
+	#tput sgr0
 }
 function display_server()
 {
+	local start=1
+	if [ ! -z "$2" ] ; then start=$2; fi
 	init_global
-	tput setaf 2
+	#tput setaf 2
 	(findsvr $1 | sed 's/\ /\\\\n/g' | xargs printf) | sed 's/^/   /g'
-	tput sgr0
+	#tput sgr0
 }
 function display_cluster()
 {
 	local cnames=$(findcluster $1)
 
-	tput setaf 6
+	#tput setaf 6
 	if [ ${#cnames[@]} -ne 0 ] ; then
 		for cname in ${cnames[@]} ; do
 			local i=1
@@ -1245,7 +1247,7 @@ function display_cluster()
 			fi
 		done
 	fi
-	tput sgr0
+	#tput sgr0
 }
 function findcluster()
 {
@@ -1394,41 +1396,26 @@ function _alogin_complete_()
 		[trsfm])
 			display_alias "$word" 
 			display_server "$word"
-#			xpat=${xpat}$(findalias $word)
-#			xpat=${xpat}$(findsvr $word)
 			;;
 		dissrt)
 			display_alias "$word" 
 			display_server "$word"
-#			xpat=${xpat}$(findalias $word)
-#			xpat=${xpat}$(findsvr $word)
 			;;
 		dissvr)
 			display_server "$word"
-#			xpat=${xpat}$(findsvr $word)
 			;;
 		c[tr])
 			display_cluster "$word"
 			display_alias "$word" 
 			display_server "$word"
-#			xpat=${xpat}$(findcluster $word)
-#			xpat=${xpat}$(findalias $word)
-#			xpat=${xpat}$(findsvr $word)
 			;;
 		*)
 			;;
 		esac
 	fi
 
-	#test history
-	#export HISTFILE=~/test.history
-	#export HISTSIZE=0 #set number of server list
-	#history -r 
-
 	COMPREPLY=($(compgen -W "$xpat"))
 	prompt_command
-
-	#rollback history
 
 	return 0
 }
@@ -1469,15 +1456,8 @@ function _alogin_complete2_()
 		esac
 	fi
 
-	#test history
-	#export HISTFILE=~/test.history
-	#export HISTSIZE=0 #set number of server list
-	#history -r 
-
 	COMPREPLY=($(compgen -W "$xpat" --))
 	prompt_command
-
-	#rollback history
 
 	return 0
 }
@@ -1495,6 +1475,7 @@ function _alogin_complete3_()
 	local lword=${lwords[COMP_CWORD-1]}
 	local line=${COMP_LINE}
 	local xpat="";
+	local dispstr="";
 
 	echo ""
 	if [ -z "$word" ] ; then
@@ -1510,25 +1491,29 @@ function _alogin_complete3_()
 	# Check to see what command is being executed.
 	case "$cmd" in
 	[trsfm])
-		display_alias "$word" 
-		display_server "$word"
+		dispstr=${dispstr}$(display_alias "$word")
+		dispstr=${dispstr}$(display_server "$word")
+		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findalias $word)
 		xpat=${xpat}$(findsvr $word)
 		;;
 	dissrt)
-		display_alias "$word" 
-		display_server "$word"
+		dispstr=${dispstr}$(display_alias "$word")
+		dispstr=${dispstr}$(display_server "$word")
+		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findalias $word)
 		xpat=${xpat}$(findsvr $word)
 		;;
 	dissvr)
-		display_server "$word"
+		dispstr=${dispstr}$(display_server "$word")
+		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findsvr $word)
 		;;
 	c[tr])
-		display_cluster "$word" 
-		display_alias "$word" 
-		display_server "$word"
+		dispstr=${dispstr}$(display_cluster "$word")
+		dispstr=${dispstr}$(display_alias "$word")
+		dispstr=${dispstr}$(display_server "$word")
+		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findcluster $word)
 		xpat=${xpat}$(findalias $word)
 		xpat=${xpat}$(findsvr $word)
@@ -1537,31 +1522,67 @@ function _alogin_complete3_()
 	;;
 	esac
 
-	trap signal_handler SIGINT
-
 	local i=0
 	local cmdlist=($xpat)
-	echo -ne "\r\033[K[$i/${#cmdlist[@]}](j:down k:up): ${cmdlist[$i]}"
+
+	echo ""
+	if [ ${#cmdlist[@]} -le 1 ] ; then
+		echo -ne "\r\033[K>> ${line}"
+#		COMPREPLY=($(compgen -W "${cmdlist[0]}" --))
+		return
+	fi
+
+	echo "${#cmdlist[@]} hosts are matched"
+	tput setab 7;tput setaf 4
+	echo "[j]:down [k]:up <Tab/Enter>:completion <Delete>:exit"
+	tput sgr0
+
+	echo -ne "\r\033[K[$(expr $i + 1)]: ${cmdlist[$i]}"
+
+	trap signal_handler SIGINT
+
 	while [ "$n" != finish ] ; do
 		read -d "\ " -s -n 1 n
-		if [ "$n" == "j" ] ; then
+		case "$n" in
+		j)
 			if [ $i -le 0 ] ; then let i=${#cmdlist[@]}-1; 
 			else let i=$i-1; fi
-		elif [ "$n" == "k" ] ; then
+			;;
+		k)
 			if [ $i -ge ${#cmdlist[@]} ] ; then i=0;
 			else let i=$i+1; fi
-		else
+			;;
+		)
 			echo -ne "\r\033[K>> ${line}"
-			COMPREPLY=($(compgen -W "${cmdlist[$i]}" --))
 			break
-		fi
-		echo -ne "\r\033[K[$i/${#cmdlist[@]}](j:down k:up): ${cmdlist[$i]}"
+			;;
+		*)
+			COMPREPLY=($(compgen -W "${cmdlist[$i]}" -- ))
+			echo -ne "\r\033[K>> ${line}"
+			break
+			;;
+		esac
+		echo -ne "\r\033[K[$(expr $i + 1)]: ${cmdlist[$i]}"
 	done
 
 	trap - SIGINT
 
 	return
 }
+
+# Complete ssh and scp
+_ssh()
+{
+	local cur opts
+
+	# the current partially completed word
+	cur="${COMP_WORDS[COMP_CWORD]}"
+	# the list of possible options - what we have found reading known_hosts
+	opts=$(sed '{ s/^\([^ ]*\) .*$/\1/; s/^\(.*\),.*$/\1/; }' $HOME/.ssh/known_hosts)
+	# return the possible completions as a list
+	COMPREPLY=($(compgen -W "${opts}" ${cur}))
+}
+
 
 function prompt_command 
 {
@@ -1575,5 +1596,9 @@ if [ $# -ne 0 ] ; then
 	cmd=$1;shift;
 	${cmd} $*
 else
+	#shopt -u hostcomplete && complete -F _ssh ssh
+	shopt -u hostcomplete 
 	complete -F _alogin_complete3_ t r ct cr s f m dissrt dissvr
 fi
+
+

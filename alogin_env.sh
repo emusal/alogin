@@ -12,6 +12,8 @@ function init_env()
 	ALOGIN_SERVER_LIST=${ALOGIN_ROOT}/server_list
 	ALOGIN_GATEWAY_LIST=${ALOGIN_ROOT}/gateway_list
 	ALOGIN_ALIAS_HOSTS=${ALOGIN_ROOT}/alias_hosts
+	ALOGIN_SPECIAL_HOSTS=${ALOGIN_ROOT}/special_hosts
+	ALOGIN_CLUSTERS=${ALOGIN_ROOT}/clusters
 	ALOGIN_KEYCHAIN=${ALOGIN_ROOT}/alogin.keychain
 	ALOGIN_LOG_FILE=${ALOGIN_ROOT}/alogin.log
 	
@@ -28,8 +30,24 @@ function init_env()
 	if [ -z "${ALOGIN_LANG}" ] ; then
 		ALOGIN_LANG="ko_KR.eucKR"
 	fi
+
 	if [ ! -e "${ALOGIN_LOG_FILE}" ] ; then
 		touch ${ALOGIN_LOG_FILE}
+	fi
+	if [ ! -e "${ALOGIN_SERVER_LIST}" ] ; then
+		cp -rfp ${ALOGIN_SERVER_LIST}.example ${ALOGIN_SERVER_LIST}
+	fi
+	if [ ! -e "${ALOGIN_GATEWAY_LIST}" ] ; then
+		cp -rfp ${ALOGIN_GATEWAY_LIST}.example ${ALOGIN_GATEWAY_LIST}
+	fi
+	if [ ! -e "${ALOGIN_ALIAS_HOSTS}" ] ; then
+		cp -rfp ${ALOGIN_ALIAS_HOSTS}.example ${ALOGIN_ALIAS_HOSTS}
+	fi
+	if [ ! -e "${ALOGIN_SPECIAL_HOSTS}" ] ; then
+		cp -rfp ${ALOGIN_SPECIAL_HOSTS}.example ${ALOGIN_SPECIAL_HOSTS}
+	fi
+	if [ ! -e "${ALOGIN_CLUSTERS}" ] ; then
+		cp -rfp ${ALOGIN_CLUSTERS}.example ${ALOGIN_CLUSTERS}
 	fi
 
 	# FILE FORMAT
@@ -576,8 +594,10 @@ function addsvr()
 }
 function dissvr()
 {
-	local user=`get_user ${1}`
-	local host=`get_host ${1}`
+#	local val=$(translate_host $1)
+	local val="${1}"
+	local user=`get_user ${val}`
+	local host=`get_host ${val}`
 	local users=""
 
 	init_global
@@ -906,7 +926,7 @@ function m()
 		dest_path=${a[1]}
 	fi
 
-	local host=$(get_host ${ahost})
+	local host=$(translate_host ${ahost})
 	local info=`get_svr_info ${ahost} | \
 		 awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
 #	local ip=`IP ${host}`
@@ -1017,8 +1037,12 @@ function s()
 function translate_cname()
 {
 	local a=($(findcluster $1))
-	log_debug "translate_cname($1) = ${a[@]}"
-	echo ${a[0]}
+	if [ ${#a[@]} -eq 0 ] ; then 
+		echo ${1}
+	else
+		log_debug "translate_cname($1) = ${a[@]}"
+		echo ${a[0]}
+	fi
 }
 function cluster_conn()
 {
@@ -1354,10 +1378,10 @@ function chgpwd()
 
 function _alogin_complete_()
 {
-    local cmd="${1##*/}"
-    local word=${COMP_WORDS[COMP_CWORD]}
-    local line=${COMP_LINE}
-    local xpat
+	local cmd="${1##*/}"
+	local word=${COMP_WORDS[COMP_CWORD]}
+	local line=${COMP_LINE}
+	local xpat="";
 
 	echo ""
 	if [ -z "$word" ] ; then
@@ -1365,29 +1389,178 @@ function _alogin_complete_()
 		echo -n ">> "$line
 		return
 	else
-	    # Check to see what command is being executed.
-	    case "$cmd" in
+		# Check to see what command is being executed.
+		case "$cmd" in
 		[trsfm])
 			display_alias "$word" 
 			display_server "$word"
+#			xpat=${xpat}$(findalias $word)
+#			xpat=${xpat}$(findsvr $word)
 			;;
 		dissrt)
 			display_alias "$word" 
 			display_server "$word"
+#			xpat=${xpat}$(findalias $word)
+#			xpat=${xpat}$(findsvr $word)
 			;;
-	    c[tr])
+		dissvr)
+			display_server "$word"
+#			xpat=${xpat}$(findsvr $word)
+			;;
+		c[tr])
 			display_cluster "$word"
 			display_alias "$word" 
 			display_server "$word"
-	        ;;
-	    *)
-	        ;;
-	    esac
+#			xpat=${xpat}$(findcluster $word)
+#			xpat=${xpat}$(findalias $word)
+#			xpat=${xpat}$(findsvr $word)
+			;;
+		*)
+			;;
+		esac
 	fi
 
-#    COMPREPLY=($(compgen -f -X "$xpat" -- "${word}"))
+	#test history
+	#export HISTFILE=~/test.history
+	#export HISTSIZE=0 #set number of server list
+	#history -r 
+
+	COMPREPLY=($(compgen -W "$xpat"))
 	prompt_command
+
+	#rollback history
+
 	return 0
+}
+
+function _alogin_complete2_()
+{
+	local cmd="${1##*/}"
+	local word=${COMP_WORDS[COMP_CWORD]}
+	local line=${COMP_LINE}
+	local xpat="";
+
+	echo ""
+	if [ -z "$word" ] ; then
+		thelp $cmd
+		echo -n ">> "$line
+		return
+	else
+		# Check to see what command is being executed.
+		case "$cmd" in
+		[trsfm])
+			xpat=${xpat}$(findalias $word)
+			xpat=${xpat}$(findsvr $word)
+			;;
+		dissrt)
+			xpat=${xpat}$(findalias $word)
+			xpat=${xpat}$(findsvr $word)
+			;;
+		dissvr)
+			xpat=${xpat}$(findsvr $word)
+			;;
+		c[tr])
+			xpat=${xpat}$(findcluster $word)
+			xpat=${xpat}$(findalias $word)
+			xpat=${xpat}$(findsvr $word)
+		;;
+		*)
+		;;
+		esac
+	fi
+
+	#test history
+	#export HISTFILE=~/test.history
+	#export HISTSIZE=0 #set number of server list
+	#history -r 
+
+	COMPREPLY=($(compgen -W "$xpat" --))
+	prompt_command
+
+	#rollback history
+
+	return 0
+}
+
+function signal_handler()
+{
+	return
+}
+
+function _alogin_complete3_()
+{
+	local cmd="${1##*/}"
+	local word=${COMP_WORDS[COMP_CWORD]}
+	local lwords=(${COMP_LINE})
+	local lword=${lwords[COMP_CWORD-1]}
+	local line=${COMP_LINE}
+	local xpat="";
+
+	echo ""
+	if [ -z "$word" ] ; then
+		if [ $COMP_CWORD -lt 2 ] ; then
+			thelp $cmd
+		else
+			echo -n ">> ${line}"
+			return
+		fi
+		return
+	fi
+
+	# Check to see what command is being executed.
+	case "$cmd" in
+	[trsfm])
+		display_alias "$word" 
+		display_server "$word"
+		xpat=${xpat}$(findalias $word)
+		xpat=${xpat}$(findsvr $word)
+		;;
+	dissrt)
+		display_alias "$word" 
+		display_server "$word"
+		xpat=${xpat}$(findalias $word)
+		xpat=${xpat}$(findsvr $word)
+		;;
+	dissvr)
+		display_server "$word"
+		xpat=${xpat}$(findsvr $word)
+		;;
+	c[tr])
+		display_cluster "$word" 
+		display_alias "$word" 
+		display_server "$word"
+		xpat=${xpat}$(findcluster $word)
+		xpat=${xpat}$(findalias $word)
+		xpat=${xpat}$(findsvr $word)
+	;;
+	*)
+	;;
+	esac
+
+	trap signal_handler SIGINT
+
+	local i=0
+	local cmdlist=($xpat)
+	echo -ne "\r\033[K[$i/${#cmdlist[@]}](j:down k:up): ${cmdlist[$i]}"
+	while [ "$n" != finish ] ; do
+		read -d "\ " -s -n 1 n
+		if [ "$n" == "j" ] ; then
+			if [ $i -le 0 ] ; then let i=${#cmdlist[@]}-1; 
+			else let i=$i-1; fi
+		elif [ "$n" == "k" ] ; then
+			if [ $i -ge ${#cmdlist[@]} ] ; then i=0;
+			else let i=$i+1; fi
+		else
+			echo -ne "\r\033[K>> ${line}"
+			COMPREPLY=($(compgen -W "${cmdlist[$i]}" --))
+			break
+		fi
+		echo -ne "\r\033[K[$i/${#cmdlist[@]}](j:down k:up): ${cmdlist[$i]}"
+	done
+
+	trap - SIGINT
+
+	return
 }
 
 function prompt_command 
@@ -1402,5 +1575,5 @@ if [ $# -ne 0 ] ; then
 	cmd=$1;shift;
 	${cmd} $*
 else
-	complete -F _alogin_complete_ t r ct cr s f m dissrt
+	complete -F _alogin_complete3_ t r ct cr s f m dissrt dissvr
 fi

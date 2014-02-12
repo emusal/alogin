@@ -1,6 +1,7 @@
 # Special host names using Regular Expression
-#--------------------------------------------
-#(scp|sdp|sfe|pcef|ip)(kt|kbb|smg|kbl|slp|rkt)[[:digit:]]*
-#scpkt* 
-#scpkt[1-3]*
-#scpkt4a
+# hostname                                                                theme
+#------------------------------------------------------------------------------------
+#(scp|sdp|sfe|pcef|ip)(kt|kbb|smg|kbl|slp|rkt)[[:digit:]]*                euckr
+#scpkt*                                                                   euckr
+#scpkt[1-3]*                                                              euckr
+#scpkt4a                                                                  utf8

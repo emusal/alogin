@@ -207,6 +207,10 @@ proc connect { proto host user passwd port {dest_path "."} } {
 			send "$passwd\r"
 			exp_continue
 		}
+		-re "¾ÏÈ£" { # euc-kr hangul
+			send "$passwd\r"
+			exp_continue
+		}
 		-re "incorrect"		 			{ exp_continue } 
 		-re "Permission denied"			{ return -1 }
 #		-re "No address|usage|route" 	{ return -2 } 

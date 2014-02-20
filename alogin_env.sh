@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.10"
+	ALOGIN_VERSION="1.7.11"
 
 	# CONFIGURATION
 	#
@@ -229,6 +229,10 @@ function tver()
 	echo "  Ver.1.7.10 auto-completion support                      @ 2014/02/05" 
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "  Ver.1.7.11 auto-completion related bug patch            @ 2014/02/20" 
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        M   ${ALOGIN_ROOT}/conn.exp"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
@@ -434,6 +438,10 @@ function GETPWD()
 	pwd=`echo "$pwd" | sed "s/<tab>/	/g"`
 	echo "$pwd"
 }
+function sGETPWD()
+{
+	GETPWD $1 | sed 's/./*/g'
+}
 function getpwd()
 {
 	GETPWD ${1} | pbcopy
@@ -614,15 +622,16 @@ function dissvr()
 	fi
 
 	for u in $users ; do
-		local pswd=`GETPWD ${u}@${host}`
-		if [ -z ${pswd} ] ; then 
+		if [ -z "$2" ] ; then local pswd=`sGETPWD ${u}@${host}`;
+		else local pswd=`GETPWD ${u}@${host}`; fi
+		if [ -z "${pswd}" ] ; then 
 			continue
 		fi
 
 		grep -v "^#" ${ALOGIN_SERVER_LIST} | \
-			awk -v h="${host}" -v u="${u}" -v svrfmt="${SVR_FMT}\n" \
+			awk -v h="${host}" -v u="${u}" -v p="${pswd}" -v svrfmt="${SVR_FMT}\n" \
 			'{ if ( $2 == h && ( u == "" || u == $3 ) ) { \
-			printf svrfmt, $1, $2, $3, $4, $5, $6 ; exit }}'
+			printf svrfmt, $1, $2, $3, p, $5, $6 ; exit }}'
 	done
 }
 function delsvr()
@@ -729,16 +738,17 @@ function disdupsvr()
 }
 function translate_host()
 {
-	local host=""
-	local a=($(findalias ${1}))
-	if [ ${#a[@]} -eq 0 ] ; then 
-		log_debug "alias name not found for host[$1]. try to find host from server_list ..."
-		a=($(findsvr ${1}))
-	fi
-	host="${a[0]}"
-	host=`get_alias_host ${host}`
-	log_debug "host[$1] is translated to ${host}"
-	echo ${host}
+#	local host=""
+#	local a=($(findalias ${1}))
+#	if [ "$a" == "" ] || [ ${#a[@]} -eq 0 ] ; then 
+#		log_debug "alias name not found for host[$1]. try to find host from server_list ..."
+#		a=($(findsvr ${1}))
+#	fi
+#	host="${a[0]}"
+#	host=`get_alias_host ${host}`
+#	log_debug "host[$1] is translated to ${host}"
+#	echo ${host}
+	echo $1
 }
 function get_conninfo()
 {
@@ -898,6 +908,10 @@ function t()
 
 	g_hosts="${ALOGIN_DEFAULT_GW} $g_hosts"
 	local info=`get_conninfo $g_hosts`
+	if [ -z "$info" ] ; then
+		echo "no entry server"
+		return
+	fi
 
 	log_debug "connection info : $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}""
 
@@ -927,8 +941,9 @@ function m()
 	if [ -z "${dest_path}" ] ; then 
 		dest_path=${a[1]}
 	fi
+	ahost=$(translate_host ${ahost})
 
-	local host=$(translate_host ${ahost})
+	local host=$(get_host ${ahost})
 	local info=`get_svr_info ${ahost} | \
 		 awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
 #	local ip=`IP ${host}`
@@ -983,8 +998,16 @@ function r()
 	local gw="$g_hosts"
 
 	g_hosts=`get_gateway_list ${gw}`
+	if [ -z "$g_hosts" ] ; then
+		echo "no entry server"
+		return
+	fi
 
 	local info=`get_conninfo $g_hosts`
+	if [ -z "$info" ] ; then
+		echo "no entry server"
+		return
+	fi
 
 	log_debug "connection info : hosts=${g_hosts} info=${info} -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"" 
 
@@ -1039,7 +1062,7 @@ function s()
 function translate_cname()
 {
 	local a=($(findcluster $1))
-	if [ ${#a[@]} -eq 0 ] ; then 
+	if [ "$a" == "" ] || [ ${#a[@]} -eq 0 ] ; then 
 		echo ${1}
 	else
 		log_debug "translate_cname($1) = ${a[@]}"
@@ -1236,7 +1259,7 @@ function display_cluster()
 		for cname in ${cnames[@]} ; do
 			local i=1
 			local a=($(grep -v "^#" ${ALOGIN_ROOT}/clusters | awk -v n="${cname}" '{ if ( $1 ~ n ) { print }}'))
-			if [ ${#a[@]} -ne 0 ] ; then
+			if [ "$a" == "" ] || [ ${#a[@]} -ne 0 ] ; then
 # 				show cluster name only
 #				echo "   ${a[0]}"
 # 				show member hosts
@@ -1493,28 +1516,24 @@ function _alogin_complete3_()
 	# Check to see what command is being executed.
 	case "$cmd" in
 	[trsfm])
-		dispstr=${dispstr}$(display_alias "$word")
-		dispstr=${dispstr}$(display_server "$word")
+		dispstr=$(display_alias "$word" && display_server "$word")
 		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findalias $word)
 		xpat=${xpat}$(findsvr $word)
 		;;
 	dissrt)
-		dispstr=${dispstr}$(display_alias "$word")
-		dispstr=${dispstr}$(display_server "$word")
+		dispstr=$(display_alias "$word" && display_server "$word")
 		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findalias $word)
 		xpat=${xpat}$(findsvr $word)
 		;;
 	dissvr)
-		dispstr=${dispstr}$(display_server "$word")
+		dispstr=$(display_server "$word")
 		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findsvr $word)
 		;;
 	c[tr])
-		dispstr=${dispstr}$(display_cluster "$word")
-		dispstr=${dispstr}$(display_alias "$word")
-		dispstr=${dispstr}$(display_server "$word")
+		dispstr=$(display_cluster "$word" && display_alias "$word" && display_server "$word")
 		echo "$dispstr" | grep -n ^" "
 		xpat=${xpat}$(findcluster $word)
 		xpat=${xpat}$(findalias $word)
@@ -1530,7 +1549,7 @@ function _alogin_complete3_()
 	echo ""
 	if [ ${#cmdlist[@]} -le 1 ] ; then
 		echo -ne "\r\033[K>> ${line}"
-#		COMPREPLY=($(compgen -W "${cmdlist[0]}" --))
+		COMPREPLY=($(compgen -W "${cmdlist[0]}" --))
 		return
 	fi
 
@@ -1551,7 +1570,7 @@ function _alogin_complete3_()
 			else let i=$i-1; fi
 			;;
 		k)
-			if [ $i -ge ${#cmdlist[@]} ] ; then i=0;
+			if [ $i -ge $(expr ${#cmdlist[@]} - 1) ] ; then i=0;
 			else let i=$i+1; fi
 			;;
 		)

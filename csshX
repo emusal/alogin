@@ -37,7 +37,7 @@ my @config_keys = qw(
     slave slavehost slaveid sock version osver
     session_max ping_test ping_timeout ssh interleave
     master_settings_set slave_settings_set
-    sorthosts
+    sorthosts align
 );
 
 foreach my $prop (@config_keys) {
@@ -73,6 +73,7 @@ sub new {
         ssh                        => 'ssh',
         no_growl                   => 0,
         interleave                 => 0,
+        align                      => 0, # 0=full, 1=left, 2=right
         hosts                      => [],
         clusters                   => {}
     }, ref($pack) || $pack;
@@ -93,7 +94,7 @@ sub new {
         'session_max=i', 'help|h',     'man|m',          'version|v',
         'ssh=s',       'hosts=s@',     'remote_command=s','no_growl',
         'master_settings_set|mss=s',   'slave_settings_set|sss=s',
-        'interleave|i=i', 'sorthosts'
+        'interleave|i=i', 'sorthosts', "align=i"
     ) || $obj->pod(-msg => "$0: bad usage\n");
 
     # Load any extra configs specified in config file or command line
@@ -602,6 +603,11 @@ sub screen_bounds {
     } else {
         my $scr = $config->screen;
         ($x,$y,$w,$h) = @{physical_screen_bounds($scr)};
+		if ($config->align == 1) {
+			$w = $w / 2; 
+		} elsif ($config->align == 2) {
+			$x = $w = $w / 2; 
+		}
     }
     $max_bounds = [ $x, $y, $w, $h ];
     return $cur_bounds = [ $x, $y, $w, $h ];
@@ -1156,7 +1162,7 @@ sub new {
 
     my $master = CsshX::Window::Master->open_window(
         $script, '--master', '--sock', $sock, '--launchpid', $$, 
-        '--screen', $config->screen, '--debug', $config->debug,
+        '--screen', $config->screen, '--align', $config->align, '--debug', $config->debug,
         '--tile_y', $config->tile_y, '--tile_x', $config->tile_x,
         $login  ? ( '--login',    $login  ) :(),
         (map { ('--config', $_) } @config),

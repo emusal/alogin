@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.11"
+	ALOGIN_VERSION="1.7.12b"
 
 	# CONFIGURATION
 	#
@@ -233,6 +233,11 @@ function tver()
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/conn.exp"
+	echo "  Ver.1.7.12 Imporved auto-completion feature             @ 2014/03/13" 
+	echo "             Added --left, --right options for alignment of cluster windows (ct/cr)"
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        M   ${ALOGIN_ROOT}/csshX"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
@@ -481,6 +486,16 @@ function getopt()
 		g_R_opt="$1"
 	fi
 }
+function get_svr()
+{
+	local user=`get_default_user ${1}`
+	local host=`get_host ${1}`
+
+	grep -v "^#" ${ALOGIN_SERVER_LIST} | \
+		awk -v h="${host}" -v u="${user}" \
+		'{ if ( $2 == h && ( u == "" || u == $3 ) ) { \
+		printf $2 ; exit }}' | head -1
+}
 function get_svr_info()
 {
 	local user=`get_default_user ${1}`
@@ -516,20 +531,19 @@ function get_svr_info()
 }
 function get_alias_host()
 {
-	local aliasname=$1
-	local host=$1
+	local aliasname="$1" host="$2"
 
 	if [ -e ${ALOGIN_ALIAS_HOSTS} ] ; then
 		host=`grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | \
 			awk -v h="${aliasname}" '{ if ( $1 == h ) print $2}' | head -1`
-		if [ -z "${host}" ] ; then host=$1; fi
+		if [ -z "${host}" ] ; then host=$2; fi
 	fi
 	echo ${host}
 }
 function get_gateway()
 {
 	local user=""
-	local host=`get_alias_host ${1}`
+	local host=`get_alias_host ${1} ${1}`
 	user=`get_user ${host}`
 	host=`get_host ${host}`
 
@@ -738,15 +752,22 @@ function disdupsvr()
 }
 function translate_host()
 {
-#	local host=""
-#	local a=($(findalias ${1}))
-#	if [ "$a" == "" ] || [ ${#a[@]} -eq 0 ] ; then 
-#		log_debug "alias name not found for host[$1]. try to find host from server_list ..."
-#		a=($(findsvr ${1}))
+#	local host
+#
+#	host=$(get_alias_host $1)
+#	if [ -z "$host" ] ; then host=$(get_svr $1); 
+#	else echo $host;return; fi
+#
+#	if [ -z "$host" ] ; then
+#		local a=($(findalias ${1}))
+#		if [ "$a" == "" ] || [ ${#a[@]} -eq 0 ] ; then 
+#			log_debug "alias name not found for host[$1]. try to find host from server_list ..."
+#			a=($(findsvr ${1}))
+#		fi
+#		host="${a[0]}"
+#		host=`get_alias_host ${host} ${host}`
+#		log_debug "host[$1] is translated to ${host}"
 #	fi
-#	host="${a[0]}"
-#	host=`get_alias_host ${host}`
-#	log_debug "host[$1] is translated to ${host}"
 #	echo ${host}
 	echo $1
 }
@@ -756,7 +777,7 @@ function get_conninfo()
 	for host in $hosts ; do
 
 		host=`translate_host ${host}`
-		host=`get_alias_host ${host}`
+		host=`get_alias_host ${host} ${host}`
 		local info_=`get_svr_info ${host}`
 		if [ ${#info_} -eq 0 ] ; then
 #			echo "no entry in server list. "${host}
@@ -770,7 +791,9 @@ function get_conninfo()
 		if [ -z ${ip} ] ; then
 			ip=$host
 		fi
+		log_debug "get_conninfo(): before info[$info_]"
 		info=$info" "${info_/$host/$ip}
+		log_debug "get_conninfo(): after info[$info]"
 	done
 
 	echo $info
@@ -848,7 +871,7 @@ function set_theme()
 function addalias()
 {
 	if [ $# -ne 2 ] ; then print_thelp; fi
-	local name=`get_alias_host $1`
+	local name=`get_alias_host $1 $1`
 	if [ "$name" == "$1" ] ; then printf "%-16s %s\n" $1 $2 >> $ALOGIN_ALIAS_HOSTS; 
 	else log_error "'$1' already exist"; fi
 }
@@ -856,7 +879,7 @@ function addalias()
 function disalias()
 {
 	if [ $# -ne 1 ] ; then print_thelp; fi
-	local name=`get_alias_host $1`
+	local name=`get_alias_host $1 $1`
 	if [ "$name" == "$1" ] ; then log_error "'$1' not exist"; 
 	else echo $name; fi
 }
@@ -933,7 +956,7 @@ function t()
 function m()
 {
 	local a=(${1//:/ })
-	local ahost=$(get_alias_host ${a[0]})
+	local ahost=$(get_alias_host ${a[0]} ${a[0]})
 	local dest_path=${a[1]}
 
 	a=(${ahost//:/ })
@@ -1027,7 +1050,7 @@ function r()
 # ftp
 function f()
 {
-	local ahost=$(get_alias_host ${1})
+	local ahost=$(get_alias_host ${1} ${1})
 	local host=`get_host ${ahost}`
 	local info=`get_svr_info ${ahost} | \
 		awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
@@ -1044,7 +1067,7 @@ function f()
 # secure ftp
 function s()
 {
-	local ahost=$(get_alias_host ${1})
+	local ahost=$(get_alias_host ${1} ${1})
 	local host=`get_host ${ahost}`
 	local info=`get_svr_info ${ahost} | \
 		 awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
@@ -1087,6 +1110,12 @@ function cluster_conn()
 			getopt "${@}"
 			args=${args}"--tile_x=${g_x_opt} "
 			is_next_skip=1
+		elif [ "$n" = "--left" ] ; then
+			getopt "${@}"
+			args=${args}"--align=1 "
+		elif [ "$n" = "--right" ] ; then
+			getopt "${@}"
+			args=${args}"--align=2 "
 		else
 			local an=$(translate_cname $n)
 			if [ $is_next_skip -ne 1 ] ; then
@@ -1099,7 +1128,7 @@ function cluster_conn()
 
 #	if [[ $TERM_PROGRAM =~ iTerm* ]] ; then csshX=${csshX}.iterm; fi
 
-	eval ${csshX} --config ${ALOGIN_ROOT}/csshx.conf --ssh="${ALOGIN_ROOT}/alogin_env.sh" --ssh_args="${cmd}" ${g_hosts} ${args}
+	eval ${csshX} --config ${ALOGIN_ROOT}/csshx.conf --ssh="${ALOGIN_ROOT}/alogin_env.sh" --ssh_args="${cmd}" ${g_hosts} ${args} 
 }
 
 # cluster t

@@ -235,6 +235,7 @@ function tver()
 	echo "        M   ${ALOGIN_ROOT}/conn.exp"
 	echo "  Ver.1.7.12 Imporved auto-completion feature             @ 2014/03/13" 
 	echo "             Added --left, --right options for alignment of cluster windows (ct/cr)"
+	echo "             Added 'runscpt' funciton"
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/csshX"
@@ -1432,6 +1433,34 @@ function chgpwd()
 	done < ${backup}
 }
 
+function runscpt() 
+{
+	local starttty=$1
+	local scptfile=$2
+
+	if [ $# -ne 2 ] ; then echo "runscpt [start-tty-num] [source-shell-file]";return; fi
+	if [ ! -e "${scptfile}" ] ; then echo "${scptfile} not found";return; fi
+
+	source ${scptfile}
+
+	for i in {0..100} ; do
+		local ttyname=$(printf "ttys%03d" $(expr $i + $starttty))
+		local funcname="runcmd_term${i}"
+		if function_exists ${funcname} ; then
+			for j in {0..100} ; do
+				local command=$($funcname $j)
+				if [ ! -z "${command}" ] ; then 
+					echo ${command} | sudo python ${ALOGIN_ROOT}/tsend.py /dev/${ttyname};
+					sleep 1
+				else
+					break
+				fi
+			done
+		else
+			break
+		fi
+	done
+}
 function _alogin_complete_()
 {
 	local cmd="${1##*/}"

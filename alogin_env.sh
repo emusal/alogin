@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.12b"
+	ALOGIN_VERSION="1.7.13b"
 
 	# CONFIGURATION
 	#
@@ -351,6 +351,27 @@ function help_IS_SPECIAL_HOST()
 	echo "   usage: IS_SPECIAL_HOST [hostname]"
 }
 
+function help_runscpt()
+{
+	echo ':: RUN SCRIPT'
+	echo '   usage: runscpt [starting-tty-num] [script-file]'
+	echo ''
+	echo 'example:'
+	echo ' The name of first ttys is ttys001 and the script file containing below functions is test.sh'
+	echo ''
+	echo ' $ runscpt 1 test.sh'
+	echo ''
+	echo 'example for script function:'
+	echo ''
+	echo '  function runcmd_term0()'
+	echo '  {'
+	echo '      local c=('
+	echo '          "tail -f $UASYS_HOME/log/um3ua/um3ua.0"'
+	echo '      )'
+	echo '      echo ${c[$1]}'
+	echo '  }'
+}
+
 function function_exists() { $1 > /dev/null 2>&1; }
 function thelp()
 {
@@ -450,12 +471,13 @@ function sGETPWD()
 }
 function getpwd()
 {
-	GETPWD ${1} | pbcopy
+	sGETPWD ${1} | pbcopy
 }
 function IP()
 {
 	local host=`get_host $1`
-	local ip=`grep -v ^# ${ALOGIN_HOST_FILE} | grep "^[0-9]" | awk -v h="$host" '{ for(i=2; i<=NF; i++) if ( $i == h ) { print $1 ; exit } }'`
+#	local ip=`grep -v ^# ${ALOGIN_HOST_FILE} | grep "^[0-9]" | awk -v h="$host" '{ for(i=2; i<=NF; i++) if ( $i == h ) { print $1 ; exit } }'`
+	local ip=`grep -v ^# ${ALOGIN_HOST_FILE} | awk -v h="$host" '{ for(i=2; i<=NF; i++) if ( $i == h ) { print $1 ; exit } }'`
 	echo $ip
 }
 function ip()
@@ -617,6 +639,23 @@ function addsvr()
 		security add-generic-password -s ${2} -a ${3} -p ${4} ${ALOGIN_KEYCHAIN}
 	fi
 }
+function addsvr2()
+{
+	local tmp=".fjdlaFDjdjC"
+	vi $tmp
+	if [ ! -e $tmp ] || [ "$(wc -l $tmp)" -lt 2 ] ; then 
+		\rm -rf $tmp
+		return
+	fi
+
+	local svr=$(grep -v "^proto" $tmp | grep -v "^---" | grep -v "^ip-address" | head -1)
+	local host=$(grep -v "^proto" $tmp | grep -v "^---" | grep -v "^ip-address" | tail -1)
+	\rm -rf $tmp
+
+	if [ -z "$svr" ] || [ -z "$host" ] ; then return; fi
+	eval addsvr $svr
+	eval addhost $host
+}
 function dissvr()
 {
 #	local val=$(translate_host $1)
@@ -736,8 +775,8 @@ function dishost()
 }
 function addhost()
 {
-	local host=$1
-	local ip=$2
+	local ip=$1
+	local host=$2
 #	if [ $# -ne 2 ] ; then print_thelp; fi
 	if [ $# -ne 2 ] ; then 
 		echo -n "hostname: ";read host;
@@ -1268,7 +1307,7 @@ function display_alias()
 {
 	init_global
 	#tput setaf 1
-	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" '{ if ( $1 ~ i ) { printf "@%s --> %s\n", $1, $2 }}' | sed 's/^/   /g'
+	grep -v "^#" ${ALOGIN_ALIAS_HOSTS} | awk -v i="${1}" '{ if ( $1 ~ i ) { printf "@%s -> %s\n", $1, $2 }}' | sed 's/^/   /g'
 	#tput sgr0
 }
 function display_server()
@@ -1438,119 +1477,38 @@ function runscpt()
 	local starttty=$1
 	local scptfile=$2
 
-	if [ $# -ne 2 ] ; then echo "runscpt [start-tty-num] [source-shell-file]";return; fi
+	if [ $# -ne 2 ] ; then print_thelp; fi
 	if [ ! -e "${scptfile}" ] ; then echo "${scptfile} not found";return; fi
 
 	source ${scptfile}
 
-	for i in {0..100} ; do
-		local ttyname=$(printf "ttys%03d" $(expr $i + $starttty))
-		local funcname="runcmd_term${i}"
-		if function_exists ${funcname} ; then
-			for j in {0..100} ; do
-				local command=$($funcname $j)
+	for cmdid in {0..100} ; do 
+		local ncmd=0
+		for termid in {0..100} ; do 
+			local ttyname=$(printf "ttys%03d" $(expr $termid + $starttty))
+			local funcname="runcmd_term${termid}"
+			if [ ! -e /dev/${ttyname} ] ; then break; fi
+			if function_exists ${funcname} ; then
+				local command=$($funcname $cmdid)
 				if [ ! -z "${command}" ] ; then 
-					echo ${command} | sudo python ${ALOGIN_ROOT}/tsend.py /dev/${ttyname};
-					sleep 1
+					echo ${command} | sudo python ${ALOGIN_ROOT}/tsend.py /dev/${ttyname}
+					let ncmd=$ncmd+1
 				else
 					break
 				fi
-			done
-		else
-			break
-		fi
+			else
+				break
+			fi
+		done
+		if [ $ncmd = 0 ] ; then break; 
+		else sleep 1; fi
 	done
 }
-function _alogin_complete_()
-{
-	local cmd="${1##*/}"
-	local word=${COMP_WORDS[COMP_CWORD]}
-	local line=${COMP_LINE}
-	local xpat="";
-
-	echo ""
-	if [ -z "$word" ] ; then
-		thelp $cmd
-		echo -n ">> "$line
-		return
-	else
-		# Check to see what command is being executed.
-		case "$cmd" in
-		[trsfm])
-			display_alias "$word" 
-			display_server "$word"
-			;;
-		dissrt)
-			display_alias "$word" 
-			display_server "$word"
-			;;
-		dissvr)
-			display_server "$word"
-			;;
-		c[tr])
-			display_cluster "$word"
-			display_alias "$word" 
-			display_server "$word"
-			;;
-		*)
-			;;
-		esac
-	fi
-
-	COMPREPLY=($(compgen -W "$xpat"))
-	prompt_command
-
-	return 0
-}
-
-function _alogin_complete2_()
-{
-	local cmd="${1##*/}"
-	local word=${COMP_WORDS[COMP_CWORD]}
-	local line=${COMP_LINE}
-	local xpat="";
-
-	echo ""
-	if [ -z "$word" ] ; then
-		thelp $cmd
-		echo -n ">> "$line
-		return
-	else
-		# Check to see what command is being executed.
-		case "$cmd" in
-		[trsfm])
-			xpat=${xpat}$(findalias $word)
-			xpat=${xpat}$(findsvr $word)
-			;;
-		dissrt)
-			xpat=${xpat}$(findalias $word)
-			xpat=${xpat}$(findsvr $word)
-			;;
-		dissvr)
-			xpat=${xpat}$(findsvr $word)
-			;;
-		c[tr])
-			xpat=${xpat}$(findcluster $word)
-			xpat=${xpat}$(findalias $word)
-			xpat=${xpat}$(findsvr $word)
-		;;
-		*)
-		;;
-		esac
-	fi
-
-	COMPREPLY=($(compgen -W "$xpat" --))
-	prompt_command
-
-	return 0
-}
-
 function signal_handler()
 {
 	return
 }
-
-function _alogin_complete3_()
+function _alogin_complete_()
 {
 	local cmd="${1##*/}"
 	local word=${COMP_WORDS[COMP_CWORD]}
@@ -1613,7 +1571,7 @@ function _alogin_complete3_()
 
 	echo "${#cmdlist[@]} hosts are matched"
 	tput setab 7;tput setaf 4
-	echo "[j]:down [k]:up <Tab/Enter>:completion <Delete>:exit"
+	echo "[j]:down [k]:up [Tab/Enter]:completion [Delete]:exit"
 	tput sgr0
 
 	echo -ne "\r\033[K[$(expr $i + 1)]: ${cmdlist[$i]}"
@@ -1623,11 +1581,11 @@ function _alogin_complete3_()
 	while [ "$n" != finish ] ; do
 		read -d "\ " -s -n 1 n
 		case "$n" in
-		j)
+		k)
 			if [ $i -le 0 ] ; then let i=${#cmdlist[@]}-1; 
 			else let i=$i-1; fi
 			;;
-		k)
+		j)
 			if [ $i -ge $(expr ${#cmdlist[@]} - 1) ] ; then i=0;
 			else let i=$i+1; fi
 			;;
@@ -1662,14 +1620,6 @@ _ssh()
 	COMPREPLY=($(compgen -W "${opts}" ${cur}))
 }
 
-
-function prompt_command 
-{
-	echo -e ""
-	echo -n ">> "$COMP_LINE
-}
-#export PROMPT_COMMAND=prompt_command
-
 init_env $*
 if [ $# -ne 0 ] ; then 
 	cmd=$1;shift;
@@ -1677,7 +1627,7 @@ if [ $# -ne 0 ] ; then
 else
 	#shopt -u hostcomplete && complete -F _ssh ssh
 	shopt -u hostcomplete 
-	complete -F _alogin_complete3_ t r ct cr s f m dissrt dissvr
+	complete -F _alogin_complete_ t r ct cr s f m dissrt dissvr
 fi
 
 

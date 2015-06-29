@@ -4,7 +4,7 @@
 # DEFINE GLOBAL VARIABLES
 #
 set log_on			0
-set timeout			20
+set timeout			600
 
 # Last character of prompt: ],[,$,{,},\,#,>
 set prompt			{[][${}\\#>]+[ ]{0,}$} 
@@ -264,6 +264,10 @@ proc putfile { proto file } {
 	expect {
 		-re "yes/no" { 
 			send "yes\r"
+			exp_continue 
+		}
+		-re "(y/n)" { 
+			send "y\r"
 			exp_continue 
 		}
 		-re $prompt { send "quit\r" }

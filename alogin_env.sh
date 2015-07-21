@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.13b"
+	ALOGIN_VERSION="1.7.13"
 
 	# CONFIGURATION
 	#
@@ -236,6 +236,11 @@ function tver()
 	echo "  Ver.1.7.12 Imporved auto-completion feature             @ 2014/03/13" 
 	echo "             Added --left, --right options for alignment of cluster windows (ct/cr)"
 	echo "             Added 'runscpt' funciton"
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        M   ${ALOGIN_ROOT}/csshX"
+	echo "  Ver.1.7.13 Sending key differently pre-defined per host @ 2015/07/21" 
+	echo "             Added --host_keys options of ct/cr"
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/csshX"
@@ -1156,6 +1161,9 @@ function cluster_conn()
 		elif [ "$n" = "--right" ] ; then
 			getopt "${@}"
 			args=${args}"--align=2 "
+		elif [ "$n" = "--host_keys" ] ; then
+			shift;args=${args}"--host_keys=$1 "
+			is_next_skip=1
 		else
 			local an=$(translate_cname $n)
 			if [ $is_next_skip -ne 1 ] ; then

@@ -14,7 +14,7 @@ use warnings;
 
 use version; (our $VERSION = '$Rev: 0.74$') =~ s/\$Rev:(.*)\$/$1/;
 
-my $config; # Global configuration object..
+our $config = undef; # Global configuration object..
 
 #==============================================================================#
 
@@ -37,7 +37,7 @@ my @config_keys = qw(
     slave slavehost slaveid sock version osver
     session_max ping_test ping_timeout ssh interleave
     master_settings_set slave_settings_set
-    sorthosts align
+    sorthosts align host_keys
 );
 
 foreach my $prop (@config_keys) {
@@ -75,6 +75,7 @@ sub new {
         interleave                 => 0,
         align                      => 0, # 0=full, 1=left, 2=right
         hosts                      => [],
+        host_keys                  => '',
         clusters                   => {}
     }, ref($pack) || $pack;
 
@@ -94,7 +95,7 @@ sub new {
         'session_max=i', 'help|h',     'man|m',          'version|v',
         'ssh=s',       'hosts=s@',     'remote_command=s','no_growl',
         'master_settings_set|mss=s',   'slave_settings_set|sss=s',
-        'interleave|i=i', 'sorthosts', "align=i"
+        'interleave|i=i', 'sorthosts', "align=i", "host_keys=s"
     ) || $obj->pod(-msg => "$0: bad usage\n");
 
     # Load any extra configs specified in config file or command line
@@ -1163,7 +1164,7 @@ sub new {
     my $master = CsshX::Window::Master->open_window(
         $script, '--master', '--sock', $sock, '--launchpid', $$, 
         '--screen', $config->screen, '--align', $config->align, '--debug', $config->debug,
-        '--tile_y', $config->tile_y, '--tile_x', $config->tile_x,
+        '--tile_y', $config->tile_y, '--tile_x', $config->tile_x, "--host_keys", $config->host_keys,
         $login  ? ( '--login',    $login  ) :(),
         (map { ('--config', $_) } @config),
     ) or die "Master window failed to open";
@@ -1385,7 +1386,7 @@ sub slaves       { CsshX::Master::Socket::Slave->slaves; }
 sub slave_count  { CsshX::Master::Socket::Slave->slave_count; }
 
 sub register_slave {
-    my ($obj, $slaveid, $hostname, $win_id, $tab_id) = @_;
+    my ($obj, $slaveid, $hostname, $win_id, $tab_id, $hostkey) = @_;
     eval {
         my $slave = CsshX::Master::Socket::Slave->get_by_slaveid($slaveid) || 
                     CsshX::Master::Socket::Slave->new($slaveid);
@@ -1393,6 +1394,7 @@ sub register_slave {
         $slave->set_windowid($win_id) if $win_id;
         $slave->set_tabid($tab_id)    if $win_id; # Yes - tab_id can be 0
         $slave->set_hostname($hostname) if $hostname;
+    	$slave->set_hostkey($hostkey) if $hostkey;
         $slave->set_master($obj);
             
         return $slave;
@@ -1613,7 +1615,7 @@ my $modes = {
     },
     'sendstring' => {
         prompt => sub { "Send string to all active windows: (Esc to exit)\r\n".
-        "[h]ostname, [c]onnection string, window [i]d, [s]lave id" },
+        "[h]ostname, [c]onnection string, window [i]d, [s]lave id [k]ey" },
         parse_buffer => sub {
             my ($obj, $buffer) = @_;
             while (length $buffer) {
@@ -1637,6 +1639,11 @@ my $modes = {
                 } elsif ($buffer =~ s/^s//) {
                     foreach my $window (CsshX::Master::Socket::Slave->slaves) {
                         $window->send_input($window->slaveid) unless $window->disabled;
+                    }
+                    return $obj->set_mode_and_parse('input', $buffer);
+                } elsif ($buffer =~ s/^k//) {
+                    foreach my $window (CsshX::Master::Socket::Slave->slaves) {
+						$window->send_input($window->hostkey) unless $window->disabled;
                     }
                     return $obj->set_mode_and_parse('input', $buffer);
                 } elsif ($buffer =~ s/^\e//) {
@@ -1748,7 +1755,9 @@ my $modes = {
                     my $sock = $config->sock;
                     my $login = $config->login || '';
                     my @config = @{$config->config};
-                    my $slave = $obj->master->register_slave($slaveid, $hostname, undef, undef);
+					my @host_keys = split /,/, $config->host_keys;
+#					my $slave = $obj->master->register_slave($slaveid, $hostname, undef, undef, $host_keys[$slaveid-1]);
+                    my $slave = $obj->master->register_slave($slaveid, $hostname, undef, undef, "fjalf");
                     $slave->open_window(
                         __FILE__, '--slave', '--sock', $sock, 
                         '--slavehost', $hostname, '--slaveid', $slaveid,
@@ -1822,7 +1831,10 @@ sub parse_buffer {
         if ($type =~ /^slave\s+(\d+)\s+(\S+)$/) {
             my ($slaveid, $hostname) = ($1,$2);
             bless $obj, 'CsshX::Master::Socket::Slave';
-            $obj->replace_slave($slaveid, $hostname, undef, undef);
+			my @host_keys = split /,/, $::config->{host_keys};
+			$obj->replace_slave($slaveid, $hostname, undef, undef, $host_keys[$slaveid-1])
+			#print "keys = $::config->{host_keys} ";
+			#$obj->replace_slave($slaveid, $hostname, undef, undef, "aaa")
         } elsif ($type eq "launcher") {
             bless $obj, 'CsshX::Master::Socket::Launcher';
             $obj->master->set_launcher($obj);
@@ -1871,7 +1883,7 @@ sub terminate {
 }
 
 sub replace_slave {
-    my ($obj, $slaveid, $hostname, $win_id, $tab_id) = @_;
+    my ($obj, $slaveid, $hostname, $win_id, $tab_id, $hostkey) = @_;
     my $xy;
     my ($windowid, $tabid);
     if (my $old = $obj->get_by_slaveid($slaveid)) {
@@ -1880,10 +1892,12 @@ sub replace_slave {
         $tabid = $old->tabid;
         $xy = [$old->location];
     }
+	#print "replace slave .. $hostkey\n";
     $obj->set_slaveid($slaveid);
     $obj->set_windowid($windowid) if defined $windowid;
     $obj->set_tabid($tabid) if defined $tabid;
     $obj->set_hostname($hostname) if $hostname;
+    $obj->set_hostkey($hostkey) if $hostkey;
     $obj->set_location(@$xy) if $xy;
     $slaves_by_slaveid->{$slaveid} = $obj;
 }
@@ -1894,6 +1908,9 @@ sub slaveid        { *{$_[0]}->{slaveid};         }
 
 sub set_hostname   { *{$_[0]}->{hostname} = $_[1]; }
 sub hostname       { *{$_[0]}->{hostname};         }
+
+sub set_hostkey   { *{$_[0]}->{hostkey} = $_[1]; }
+sub hostkey       { *{$_[0]}->{hostkey};         }
 
 sub set_sort       { $sort = $_[1]; }
 sub sort           { $sort;         }         
@@ -1943,7 +1960,8 @@ sub parse_buffer {
             $obj->terminate;
         } elsif ($msg =~ /^(\d+)\s*(.*)$/) {
             my ($slaveid, $ids) = ($1, $2);
-            $obj->master->register_slave($slaveid, undef, split ',', $ids);
+			my @host_keys = split /,/, $config->host_keys;
+            $obj->master->register_slave($slaveid, undef, split ',', $ids, "undef");
         } else {
             warn "Bad Message [$msg]";
             $obj->terminate;
@@ -2058,7 +2076,9 @@ use constant _ptr_pack_str => 'P'.__PACKAGE__->CGFloatS*4;
 
 package main;
 
-$config = CsshX::Config->new;
+$::config = CsshX::Config->new;
+#use Data::Dumper;
+#print Dumper($config);
 
 die "Sorry, need OS-X 10.5 or higher\n" if ($config->osver lt qv(10.5.0));
 
@@ -2084,7 +2104,7 @@ if (($config->osver ge qv(10.6.0)) && ($config->osver lt qv(10.7.0))) {
 
 eval 'use Carp; $SIG{ __DIE__ } = sub { Carp::confess( @_ ); sleep 10; }; $PerlObjCBridge::Trace=1'
     if $config->debug; # Stack trace on death
-
+	
 if    ($config->help)    { $config->pod(-verbose => 1)                        }
 elsif ($config->man)     { $config->pod(-verbose => 2)                        }
 elsif ($config->version) { die sprintf "csshX $VERSION\n", $VERSION           }

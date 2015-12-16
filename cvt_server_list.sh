@@ -50,9 +50,14 @@ printf "#${SVR_FMT_BAR:1}\n" >> ${new_server_list}
 if [ -f ${path} ] ; then
 	while read line ; do
 		len=`expr ${#line}`
-#		if [ ${len} -eq 0 ] || [ ${line:0:1} = '#' ] ; then
-#			continue
-#		fi
+		if [ ${len} -eq 0 ] ; then
+			echo "" >> ${new_server_list}
+			continue
+		fi
+		if [ ${line:0:1} = '#' ] ; then
+			echo "$line" >> ${new_server_list}
+			continue
+		fi
 		add_to_keychain ${line}
 		add_to_serverlist ${line}
 	done < ${path}

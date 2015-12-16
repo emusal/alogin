@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.13"
+	ALOGIN_VERSION="1.7.14"
 
 	# CONFIGURATION
 	#
@@ -244,6 +244,9 @@ function tver()
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/csshX"
+	echo "  Ver.1.7.14 Support to assign different terminal theme   @ 2015/12/16"
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
@@ -872,6 +875,24 @@ function IS_SPECIAL_HOST()
 	fi
 }
 
+function get_terminal_theme()
+{
+	if [ -e ${ALOGIN_ROOT}/special_hosts ] ; then
+		local a=($g_hosts)
+		local dest=`get_host ${a[${#a[*]}-1]}`
+		while read -r line ; do
+			if [ -z "$line" ] ; then continue; fi
+			if [ "${line:0:1}" == "#" ] ; then continue; fi
+			read host theme <<< $line
+			if [[ $dest =~ $host ]] ; then
+				echo $theme
+				return
+			fi
+		done < ${ALOGIN_ROOT}/special_hosts
+	fi
+	echo ${ALOGIN_DEFAULT_TERM_THEME}
+}
+
 function set_title()
 {
 	local argv=($@)
@@ -983,12 +1004,7 @@ function t()
 
 	log_debug "connection info : $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}""
 
-
-	if [ `is_special_host` -ne 0 ] ; then 
-		set_theme "${ALOGIN_SPECIAL_TERM_THEME}"
-	elif [ ! -z "${ALOGIN_DEFAULT_TERM_THEME}" ] ; then
-		set_theme "${ALOGIN_DEFAULT_TERM_THEME}"
-	fi
+	set_theme $(get_terminal_theme)
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
 	local a=($g_hosts)
@@ -1079,11 +1095,7 @@ function r()
 
 	log_debug "connection info : hosts=${g_hosts} info=${info} -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"" 
 
-	if [ `is_special_host` -ne 0 ] ; then 
-		set_theme "${ALOGIN_SPECIAL_TERM_THEME}"
-	elif [ ! -z "${ALOGIN_DEFAULT_TERM_THEME}" ] ; then
-		set_theme "${ALOGIN_DEFAULT_TERM_THEME}"
-	fi
+	set_theme $(get_terminal_theme)
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
 	local a=($g_hosts)

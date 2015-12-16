@@ -23,15 +23,19 @@ function add_to_serverlist()
 	passwd=$4
 	port=$5
 	gateway=$6
+	locale=$7
 	if [ -z "$gateway" ] ; then 
 		gateway="-"
 	fi
+	if [ -z "$locale" ] ; then 
+		locale="-"
+	fi
 	if [ -z ${ALOGIN_KEYCHAIN_USE} ] ; then
 		printf "${SVR_FMT}\n" \
-			$proto $host $user $passwd $port $gateway >> ${new_server_list}
+			$proto $host $user $passwd $port $gateway $locale >> ${new_server_list}
 	else
 		printf "${SVR_FMT}\n" \
-			$proto $host $user "_HIDDEN_" $port $gateway >> ${new_server_list}
+			$proto $host $user "_HIDDEN_" $port $gateway $locale >> ${new_server_list}
 	fi
 }
 
@@ -40,15 +44,15 @@ if [ ! -z ${ALOGIN_KEYCHAIN_USE} ] ; then
 	security create-keychain -p ${password} ${keychain_path}
 fi
 
-echo "#proto  host                 user                 passwd               port  gateway" > ${new_server_list}
-echo "#------ -------------------- -------------------- -------------------- ----- -------" >> ${new_server_list}
+printf "${SVR_FMT}\n" "#proto" "host" "user" "passwd" "port" "gateway" "locale"> ${new_server_list}
+printf "#${SVR_FMT_BAR:1}\n" >> ${new_server_list}
 
 if [ -f ${path} ] ; then
 	while read line ; do
 		len=`expr ${#line}`
-		if [ ${len} -eq 0 ] || [ ${line:0:1} = '#' ] ; then
-			continue
-		fi
+#		if [ ${len} -eq 0 ] || [ ${line:0:1} = '#' ] ; then
+#			continue
+#		fi
 		add_to_keychain ${line}
 		add_to_serverlist ${line}
 	done < ${path}

@@ -1223,6 +1223,8 @@ sub new {
         $slave->set_space($config->space) if $config->space;
         $slave->set_settings_set($config->slave_settings_set)
             if $config->slave_settings_set;
+		use Time::HiRes qw(usleep nanosleep);
+		sleep(1);
     }
     $greeting .= "done\n";
 

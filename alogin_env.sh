@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.14"
+	ALOGIN_VERSION="1.7.15"
 
 	# CONFIGURATION
 	#
@@ -54,11 +54,11 @@ function init_env()
 
 	# FILE FORMAT
 	#
-	SVR_FMT="%-7s %-20s %-20s %-20s %-5s %s"
-	SVR_FMT_BAR="------- -------------------- -------------------- -------------------- ----- --------------------"
+	SVR_FMT="%-7s %-20s %-20s %-20s %-5s %-20s %-20s"
+	SVR_FMT_BAR="------- -------------------- -------------------- -------------------- ----- -------------------- --------------------"
 	
 	if [ ! -e ${ALOGIN_SERVER_LIST} ] ; then
-		printf "${SVR_FMT}\n" "#proto" "host" "user" "passwd" "port" "gateway" > ${ALOGIN_SERVER_LIST}
+		printf "${SVR_FMT}\n" "#proto" "host" "user" "passwd" "port" "gateway" "locale" > ${ALOGIN_SERVER_LIST}
 		echo "#${SVR_FMT_BAR}" >> ${ALOGIN_SERVER_LIST}
 	fi
 
@@ -247,6 +247,11 @@ function tver()
 	echo "  Ver.1.7.14 Support to assign different terminal theme   @ 2015/12/16"
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "  Ver.1.7.15 Support different local for each hosts       @ 2015/12/16"
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        M   ${ALOGIN_ROOT}/cvt_server_list.sh"
+	echo "        M   ${ALOGIN_ROOT}/server_list.example"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
@@ -446,6 +451,16 @@ function get_host_n()
 		echo ""
 	fi
 }
+function get_locale()
+{
+	local user=`get_user ${1}`
+	local host=`get_host ${1}`
+	local locale=`grep -v "^#" ${ALOGIN_SERVER_LIST} | \
+		awk -v h="${host}" -v u="${user}" \
+		'{ if ( $2 == h && ( u == "" || u == $3 )  ) print $7 }' | head -1`
+	if [ "$locale" == '-' ] ; then echo ${ALOGIN_LANG};
+	else echo "$locale"; fi
+}
 function GETPWD()
 {
 	local user=`get_user ${1}`
@@ -631,6 +646,8 @@ function addsvr()
 	if [ -z $port ] ; then port="-"; fi
 	local gw=$6
 	if [ -z $gw ] ; then gw="-"; fi
+	local locale=$7
+	if [ -z $locale ] ; then locale="-"; fi
 
 	local pswd=`GETPWD ${user}@${host}`
 	if [ ! -z ${pswd} ] ; then
@@ -640,10 +657,10 @@ function addsvr()
 
 	if [ -z ${ALOGIN_KEYCHAIN_USE} ] ; then
 		# proto host user passwd port gw
-		printf "${SVR_FMT}\n" $1 $2 $3 $4 $port $gw >> ${ALOGIN_SERVER_LIST}
+		printf "${SVR_FMT}\n" $1 $2 $3 $4 $port $gw $locale >> ${ALOGIN_SERVER_LIST}
 	else 
 		# proto host user passwd port gw
-		printf "${SVR_FMT}\n" $1 $2 $3 ${hidden_passwd} $port $gw >> ${ALOGIN_SERVER_LIST}
+		printf "${SVR_FMT}\n" $1 $2 $3 ${hidden_passwd} $port $gw $locale >> ${ALOGIN_SERVER_LIST}
 		security add-generic-password -s ${2} -a ${3} -p ${4} ${ALOGIN_KEYCHAIN}
 	fi
 }
@@ -674,7 +691,7 @@ function dissvr()
 
 	init_global
 
-	printf "${SVR_FMT}\n" "proto" "host" "user" "passwd" "port" "gateway"
+	printf "${SVR_FMT}\n" "proto" "host" "user" "passwd" "port" "gateway" "locale"
 	echo "${SVR_FMT_BAR}"
 
 	if [ -z "$user" ] ; then
@@ -693,7 +710,7 @@ function dissvr()
 		grep -v "^#" ${ALOGIN_SERVER_LIST} | \
 			awk -v h="${host}" -v u="${u}" -v p="${pswd}" -v svrfmt="${SVR_FMT}\n" \
 			'{ if ( $2 == h && ( u == "" || u == $3 ) ) { \
-			printf svrfmt, $1, $2, $3, p, $5, $6 ; exit }}'
+			printf svrfmt, $1, $2, $3, p, $5, $6, $7 ; exit }}'
 	done
 }
 function delsvr()
@@ -734,7 +751,7 @@ function dissrt()
 
 	init_global
 
-	printf "${SVR_FMT}\n" "proto" "host" "user" "passwd" "port" "gateway"
+	printf "${SVR_FMT}\n" "proto" "host" "user" "passwd" "port" "gateway" "locale"
 	echo "${SVR_FMT_BAR}"
 
 	hosts=`get_gateway_list ${gw}`
@@ -950,21 +967,6 @@ function disalias()
 	else echo $name; fi
 }
 
-function get_locale()
-{
-#	local host=$1
-#	local locale=""
-#	if [ -z "$host" ] ; then
-#		locale=${ALOGIN_LANG}
-#	else
-#		locale="ko_KR.UTF-8"
-#		locale="ko_KR.eucKR"
-#	fi
-#	log_debug "the locale of host[${host}] is $locale"
-#	echo "${locale}"
-	echo ${ALOGIN_LANG}
-}
-
 # telnet or ssh
 function t()
 {
@@ -1008,7 +1010,7 @@ function t()
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
 	local a=($g_hosts)
-	local dest=`get_host ${a[${#a[*]}-1]}`
+	local dest=${a[${#a[*]}-1]}
 	LC_ALL=$(get_locale ${dest}) ${ALOGIN_ROOT}/conn.exp $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }
@@ -1046,7 +1048,7 @@ function m()
 		dest_path="."
 	fi
 	log_debug "$info"
-	LC_ALL=$(get_locale ${host}) ${ALOGIN_ROOT}/conn.exp sshfs $info -d "${dest_path}"
+	LC_ALL=$(get_locale ${ahost}) ${ALOGIN_ROOT}/conn.exp sshfs $info -d "${dest_path}"
 }
 
 # Automatically connect to remote host after determining gateway
@@ -1099,7 +1101,7 @@ function r()
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
 	local a=($g_hosts)
-	local dest=`get_host ${a[${#a[*]}-1]}`
+	local dest=${a[${#a[*]}-1]}
 	LC_ALL=$(get_locale ${dest}) ${ALOGIN_ROOT}/conn.exp ${info} -c "${g_c_opt}" -p "${g_p_opt}" -g "${g_g_opt}" -t "${g_t_opt}" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }
@@ -1278,22 +1280,22 @@ function ffindsvr()
 
 	init_global
 
-	printf "${SVR_FMT}\n" "proto" "host" "user" "passwd" "port" "gateway"
+	printf "${SVR_FMT}\n" "proto" "host" "user" "passwd" "port" "gateway" "locale"
 	echo "${SVR_FMT_BAR}"
 
 	if [ -z "$user" ] ; then
 		grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v i="${1}" -v svrfmt="${SVR_FMT}\n" \
 			'{ if ( $2 ~ i || $3 ~ i ) { \
-			printf svrfmt, $1, $2, $3, $4, $5, $6 }}'
+			printf svrfmt, $1, $2, $3, $4, $5, $6, $7 }}'
 	else
 		if [ -z "$host" ] ; then
 			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v svrfmt="${SVR_FMT}\n" \
 				'{ if ( $3 == u ) { \
-				printf svrfmt, $1, $2, $3, $4, $5, $6 }}'
+				printf svrfmt, $1, $2, $3, $4, $5, $6, $7 }}'
 		else
 			grep -v "^#" ${ALOGIN_SERVER_LIST} | awk -v u="${user}" -v h="${host}" -v svrfmt="${SVR_FMT}\n" \
 				'{ if ( $3 == u && $2 ~ h ) { \
-				printf svrfmt, $1, $2, $3, $4, $5, $6 }}'
+				printf svrfmt, $1, $2, $3, $4, $5, $6, $7 }}'
 		fi
 	fi
 }
@@ -1488,7 +1490,7 @@ function chgpwd()
 			printf "${SVR_FMT}\n" ${line} >> ${ALOGIN_SERVER_LIST}
 			continue
 		fi
-		printf "${SVR_FMT}\n" ${params[0]} ${params[1]} ${params[2]} ${passwd} ${params[4]} ${params[5]} >> ${ALOGIN_SERVER_LIST}
+		printf "${SVR_FMT}\n" ${params[0]} ${params[1]} ${params[2]} ${passwd} ${params[4]} ${params[5]} ${params[6]} >> ${ALOGIN_SERVER_LIST}
 	done < ${backup}
 }
 

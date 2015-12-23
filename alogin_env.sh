@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.15"
+	ALOGIN_VERSION="1.7.16"
 
 	# CONFIGURATION
 	#
@@ -252,6 +252,10 @@ function tver()
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/cvt_server_list.sh"
 	echo "        M   ${ALOGIN_ROOT}/server_list.example"
+	echo "  Ver.1.7.15 m() related bug fix                          @ 2015/12/23"
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        M   ${ALOGIN_ROOT}/conn.exp"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
@@ -907,7 +911,7 @@ function get_terminal_theme()
 			fi
 		done < ${ALOGIN_ROOT}/special_hosts
 	fi
-	echo ${ALOGIN_DEFAULT_TERM_THEME}
+	echo "${ALOGIN_DEFAULT_TERM_THEME}"
 }
 
 function set_title()
@@ -1006,7 +1010,7 @@ function t()
 
 	log_debug "connection info : $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}""
 
-	set_theme $(get_terminal_theme)
+	set_theme "$(get_terminal_theme)"
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
 	local a=($g_hosts)
@@ -1032,8 +1036,8 @@ function m()
 	local host=$(get_host ${ahost})
 	local info=`get_svr_info ${ahost} | \
 		 awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
-#	local ip=`IP ${host}`
-#	info=${info/$host/$ip} # converting hostname
+	local ip=`IP ${host}`
+	info=${info/$host/$ip:$host} # converting hostname
 
 	init_global
 
@@ -1097,7 +1101,7 @@ function r()
 
 	log_debug "connection info : hosts=${g_hosts} info=${info} -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"" 
 
-	set_theme $(get_terminal_theme)
+	set_theme "$(get_terminal_theme)"
 	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
 
 	local a=($g_hosts)

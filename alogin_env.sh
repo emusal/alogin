@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.16"
+	ALOGIN_VERSION="1.7.17"
 
 	# CONFIGURATION
 	#
@@ -21,13 +21,6 @@ function init_env()
 	fi
 	if [ -z "${ALOGIN_HOST_FILE}" ] ; then
 		ALOGIN_HOST_FILE=/etc/hosts
-	fi
-	if [ -z "${ALOGIN_SPECIAL_TERM_THEME}" ] ; then
-		if [ "$TERM_PROGRAM" = "Apple_Terminal" ] ; then
-			export ALOGIN_SPECIAL_TERM_THEME="Basic"
-		else
-			export ALOGIN_SPECIAL_TERM_THEME="cyan"
-		fi
 	fi
 	if [ -z "${ALOGIN_LANG}" ] ; then
 		ALOGIN_LANG="ko_KR.eucKR"
@@ -252,10 +245,16 @@ function tver()
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/cvt_server_list.sh"
 	echo "        M   ${ALOGIN_ROOT}/server_list.example"
-	echo "  Ver.1.7.15 m() related bug fix                          @ 2015/12/23"
+	echo "  Ver.1.7.16 Fixed 'm' command bug that failed to mount   @ 2015/12/23"
 	echo "  ---------------------------------------------------------------------"
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/conn.exp"
+	echo "  Ver.1.7.17 m() Added ALOGIN_SSHCMD to set custom ssh    @ 2015/12/28"
+	echo "             set your 'ssh' program, such as 'sshrc'"
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        M   ${ALOGIN_ROOT}/conn.exp"
+	echo "        A   ${ALOGIN_ROOT}/sshrc (downloaded from https://github.com/Russell91/sshrc)"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"

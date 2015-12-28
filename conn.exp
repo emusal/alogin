@@ -20,6 +20,10 @@ if [ info exists env(ALOGIN_SSHOPT) ] {
 	set sshopt $env(ALOGIN_SSHOPT)
 }
 set tunnopt			""
+set sshcmd			"ssh"
+if [ info exists env(ALOGIN_SSHCMD) ] {
+	set sshcmd $env(ALOGIN_SSHCMD)
+}
 
 set ecode			{ SUCCESS, EERROR, ETIMEOUT }
 set is_first 		1
@@ -69,7 +73,7 @@ proc get_default_port { proto } {
 }
 
 proc connect { proto host ipaddr user passwd port {dest_path "."} } {
-	global prompt is_first spawn_id spawn_out sshopt tunnopt ssh 
+	global prompt is_first spawn_id spawn_out sshopt tunnopt sshcmd
 	global reconn_interval
 	set CTRLC	\003
 
@@ -78,7 +82,7 @@ proc connect { proto host ipaddr user passwd port {dest_path "."} } {
 		if { $is_first == 1 } { 
 			if { $proto == "ssh" } { 
 				log_debug [ format "spawn -noecho ssh $user@$host -p $port $sshopt $tunnopt" ]
-				eval spawn -noecho ssh $user@$host -p $port $sshopt $tunnopt
+				eval spawn -noecho $sshcmd $user@$host -p $port $sshopt $tunnopt
 			} elseif { $proto == "sftp" } { 
 				eval spawn -noecho $proto -oPort=$port $user@$host
 			} else {

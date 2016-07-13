@@ -70,6 +70,7 @@ proc get_default_port { proto } {
 	if { $proto == "sftp" } 	{ return 22 }
 	if { $proto == "sshfs" } 	{ return 22 }
 	if { $proto == "vagrant" } 	{ return 22 }
+	if { $proto == "docker" } 	{ return 22 }
 }
 
 proc connect { proto host ipaddr user passwd port {dest_path "."} } {
@@ -110,6 +111,16 @@ proc connect { proto host ipaddr user passwd port {dest_path "."} } {
 		} else { 
 			expect {
 				-re $prompt { send "vagrant ssh $host -- -l $user $tunnopt\r" }
+			}
+		}
+		wait 1
+	}
+	"docker" {
+		if { $is_first == 1 } { 
+			eval spawn -noecho docker exec -u $user -it $host /bin/bash
+		} else { 
+			expect {
+				-re $prompt { send "docker exec -u $user -it $host /bin/bash\r" }
 			}
 		}
 		wait 1

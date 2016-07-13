@@ -4,7 +4,7 @@
 #
 function init_env()
 {
-	ALOGIN_VERSION="1.7.17"
+	ALOGIN_VERSION="1.7.18"
 
 	# CONFIGURATION
 	#
@@ -15,6 +15,7 @@ function init_env()
 	ALOGIN_CLUSTERS=${ALOGIN_ROOT}/clusters
 	ALOGIN_KEYCHAIN=${ALOGIN_ROOT}/alogin.keychain
 	ALOGIN_LOG_FILE=${ALOGIN_ROOT}/alogin.log
+	ALOGIN_TERM_THEME=${ALOGIN_ROOT}/term_themes
 	
 	if [ -z "${ALOGIN_LOG_LEVEL}" ] ; then
 		ALOGIN_LOG_LEVEL=0
@@ -43,6 +44,9 @@ function init_env()
 	fi
 	if [ ! -e "${ALOGIN_CLUSTERS}" ] ; then
 		cp -rfp ${ALOGIN_CLUSTERS}.example ${ALOGIN_CLUSTERS}
+	fi
+	if [ ! -e "${ALOGIN_TERM_THEME}" ] ; then
+		cp -rfp ${ALOGIN_TERM_THEME}.example ${ALOGIN_TERM_THEME}
 	fi
 
 	# FILE FORMAT
@@ -255,6 +259,16 @@ function tver()
 	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
 	echo "        M   ${ALOGIN_ROOT}/conn.exp"
 	echo "        A   ${ALOGIN_ROOT}/sshrc (downloaded from https://github.com/Russell91/sshrc)"
+	echo "  Ver.1.7.18                                              @ 2016/2/1"
+	echo "             Solved problem that has not been mounted using IP address"
+	echo "             Added 'term_themes' to map locale and Terminal theme."
+	echo "             Updated osxfuse packages for supporting OSX El Capiten"
+	echo "             Supported 'docker' connectivity"
+	echo "  ---------------------------------------------------------------------"
+	echo "        M   ${ALOGIN_ROOT}/conn.exp"
+	echo "        M   ${ALOGIN_ROOT}/alogin_env.sh"
+	echo "        A   ${ALOGIN_ROOT}/term_themes.example"
+	echo "        A   ${ALOGIN_ROOT}/pkgs/osxfuse-2.8.3.dmg"
 	fi
 
 	echo "ALOGIN Ver.${ALOGIN_VERSION}"
@@ -456,8 +470,9 @@ function get_host_n()
 }
 function get_locale()
 {
-	local user=`get_user ${1}`
-	local host=`get_host ${1}`
+	local dest=$(get_alias_host ${1})
+	local user=`get_user ${dest}`
+	local host=`get_host ${dest}`
 	local locale=`grep -v "^#" ${ALOGIN_SERVER_LIST} | \
 		awk -v h="${host}" -v u="${user}" \
 		'{ if ( $2 == h && ( u == "" || u == $3 )  ) print $7 }' | head -1`
@@ -897,7 +912,7 @@ function IS_SPECIAL_HOST()
 
 function get_terminal_theme()
 {
-	if [ -e ${ALOGIN_ROOT}/special_hosts ] ; then
+	if [ -e ${ALOGIN_SPECIAL_HOSTS} ] ; then
 		local a=($g_hosts)
 		local dest=`get_host ${a[${#a[*]}-1]}`
 		while read -r line ; do
@@ -908,7 +923,19 @@ function get_terminal_theme()
 				echo $theme
 				return
 			fi
-		done < ${ALOGIN_ROOT}/special_hosts
+		done < ${ALOGIN_SPECIAL_HOSTS}
+	fi
+	if [ -e ${ALOGIN_TERM_THEME} ] ; then
+		local a=($g_hosts)
+		local dest=`get_host ${a[${#a[*]}-1]}`
+		local locale=`get_locale $dest`
+		local theme=`grep -v "^#" ${ALOGIN_TERM_THEME} | \
+			awk -v l="${locale}" \
+			'{ if ( $1 == l ) print $2 }' | head -1`
+		if [ ! -z "$theme" ] ; then
+			echo $theme
+			return
+		fi
 	fi
 	echo "${ALOGIN_DEFAULT_TERM_THEME}"
 }
@@ -1009,11 +1036,12 @@ function t()
 
 	log_debug "connection info : $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}""
 
-	set_theme "$(get_terminal_theme)"
-	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
-
 	local a=($g_hosts)
 	local dest=${a[${#a[*]}-1]}
+
+	set_theme "$(get_terminal_theme)"
+	if [ `is_special_host` -eq 0 ] || [ $LANG != $(get_locale ${dest}) ] ; then set_title ${g_hosts}; fi
+
 	LC_ALL=$(get_locale ${dest}) ${ALOGIN_ROOT}/conn.exp $info -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }
@@ -1036,7 +1064,11 @@ function m()
 	local info=`get_svr_info ${ahost} | \
 		 awk -v host="$host" '{ if ( $2 == host ) print $2" "$3" "$4" "$5 }'`
 	local ip=`IP ${host}`
-	info=${info/$host/$ip:$host} # converting hostname
+	if [ -z "$ip" ] ; then
+		info=${info/$host/$host} # converting hostname
+	else
+		info=${info/$host/$ip:$host} # converting hostname
+	fi
 
 	init_global
 
@@ -1100,11 +1132,12 @@ function r()
 
 	log_debug "connection info : hosts=${g_hosts} info=${info} -c "$g_c_opt" -p "$g_p_opt" -g "$g_g_opt" -t "$g_t_opt" -L "${g_L_opt}" -R "${g_R_opt}"" 
 
-	set_theme "$(get_terminal_theme)"
-	if [ `is_special_host` -eq 0 ] ; then set_title ${g_hosts}; fi
-
 	local a=($g_hosts)
 	local dest=${a[${#a[*]}-1]}
+
+	set_theme "$(get_terminal_theme)"
+	if [ `is_special_host` -eq 0 ] || [ $LANG != $(get_locale ${dest}) ] ; then set_title ${g_hosts}; fi
+
 	LC_ALL=$(get_locale ${dest}) ${ALOGIN_ROOT}/conn.exp ${info} -c "${g_c_opt}" -p "${g_p_opt}" -g "${g_g_opt}" -t "${g_t_opt}" -L "${g_L_opt}" -R "${g_R_opt}"
 	set_theme # set default
 }

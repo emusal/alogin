@@ -471,6 +471,7 @@ function get_host_n()
 function get_locale()
 {
 	local dest=$(get_alias_host ${1})
+	if [ -z "${dest}" ] ; then dest=${1}; fi
 	local user=`get_user ${dest}`
 	local host=`get_host ${dest}`
 	local locale=`grep -v "^#" ${ALOGIN_SERVER_LIST} | \

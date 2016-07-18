@@ -928,7 +928,7 @@ function get_terminal_theme()
 	fi
 	if [ -e ${ALOGIN_TERM_THEME} ] ; then
 		local a=($g_hosts)
-		local dest=`get_host ${a[${#a[*]}-1]}`
+		local dest=${a[${#a[*]}-1]}
 		local locale=`get_locale $dest`
 		local theme=`grep -v "^#" ${ALOGIN_TERM_THEME} | \
 			awk -v l="${locale}" \

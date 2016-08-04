@@ -105,12 +105,18 @@ proc connect { proto host ipaddr user passwd port {dest_path "."} } {
 			}
 		}
 	}
-	"vagrant" {
+	"vagrant*" {
 		if { $is_first == 1 } { 
 			eval spawn -noecho vagrant ssh $host -- -l $user $tunnopt
 		} else { 
+			set vagrant_cwd [lindex [split $proto ":"] 1]
 			expect {
-				-re $prompt { send "vagrant ssh $host -- -l $user $tunnopt\r" }
+				-re $prompt { 
+					if { $vagrant_cwd ne "" } {
+						send "cd $vagrant_cwd\r"
+					}
+					send "vagrant ssh $host -- -l $user $tunnopt\r" 
+				}
 			}
 		}
 		wait 1
